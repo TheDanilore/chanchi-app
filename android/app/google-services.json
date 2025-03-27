@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "74348715204",
+    "project_id": "chanchi-app",
+    "storage_bucket": "chanchi-app.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:74348715204:android:b8412f523bc500f85dfd91",
+        "android_client_info": {
+          "package_name": "com.example.chanchi_app"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "74348715204-87nrkt9ng86eq41cek9l505tpk4qkqa4.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.example.chanchi_app",
+            "certificate_hash": "bc2538376c68a01fef4ccf68aa4d56a9e05d4330"
+          }
+        },
+        {
+          "client_id": "74348715204-pjnekdctov66ae8krpo4rsk79j6qndu7.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCZ6qIvmIz-TNEg7mKT_y6r4PQNZRUf4mc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "74348715204-pjnekdctov66ae8krpo4rsk79j6qndu7.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
