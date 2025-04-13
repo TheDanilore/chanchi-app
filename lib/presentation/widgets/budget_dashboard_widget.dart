@@ -1,3 +1,4 @@
+import 'package:chanchi_app/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:chanchi_app/config/theme.dart';
 import 'package:chanchi_app/models/budget.dart';
@@ -402,6 +403,39 @@ class _BudgetDashboardWidgetState extends State<BudgetDashboardWidget> {
     bool notifyReachedValue = true;
     bool notifyExceededValue = true;
 
+    final notificationService = NotificationService();
+    // Verificar permisos de notificación
+    bool hasPermission =
+        await notificationService.requestNotificationPermissions();
+
+    if (!hasPermission) {
+      // Mostrar diálogo explicativo si no hay permisos
+      await showDialog(
+        context: context,
+        builder:
+            (context) => AlertDialog(
+              title: const Text('Permisos de Notificación'),
+              content: const Text(
+                'Para recibir alertas de presupuesto, necesitamos tu permiso para enviar notificaciones. ¿Deseas habilitar las notificaciones?',
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(context).pop(),
+                  child: const Text('Cancelar'),
+                ),
+                ElevatedButton(
+                  onPressed: () async {
+                    Navigator.of(context).pop();
+                    await notificationService.requestNotificationPermissions();
+                  },
+                  child: const Text('Habilitar'),
+                ),
+              ],
+            ),
+      );
+    }
+
+    
     // Cargar categorías si es necesario
     if (_categoriesMap.isEmpty) {
       try {
