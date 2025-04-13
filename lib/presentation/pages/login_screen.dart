@@ -163,11 +163,7 @@ class _LoginScreenState extends State<LoginScreen> {
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
                   // Logo y título
-                  Icon(
-                    Icons.monetization_on_rounded,
-                    size: 80,
-                    color: AppTheme.primaryColor,
-                  ),
+                  Image.asset('assets/logo.png', width: 200),
                   const SizedBox(height: AppTheme.spacingM),
                   Text(
                     'Bienvenido a ChanchiApp',

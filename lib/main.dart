@@ -1,12 +1,9 @@
 import 'package:chanchi_app/config/theme.dart';
 import 'package:chanchi_app/config/theme_manager.dart';
 import 'package:chanchi_app/presentation/pages/splash_screen.dart';
-import 'package:chanchi_app/services/notification_service.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'package:firebase_messaging/firebase_messaging.dart';
-import 'package:intl/date_symbol_data_local.dart';
 
 // Manejador de mensajes en segundo plano
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
@@ -19,7 +16,49 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+  
+  try {
+    await Firebase.initializeApp(
+      // options: DefaultFirebaseOptions.currentPlatform,
+    );
+    print('Firebase inicializado correctamente');
+
+    // Configurar Firebase Cloud Messaging
+    FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
+    
+    // Solicitar permisos de notificaciones
+    FirebaseMessaging messaging = FirebaseMessaging.instance;
+    NotificationSettings settings = await messaging.requestPermission(
+      alert: true,
+      badge: true,
+      sound: true,
+    );
+
+    if (settings.authorizationStatus == AuthorizationStatus.authorized) {
+      print('Permisos de notificación concedidos');
+    } else {
+      print('Permisos de notificación denegados');
+    }
+
+    // Configuración de manejo de errores global
+    FlutterError.onError = (FlutterErrorDetails details) {
+      FlutterError.dumpErrorToConsole(details);
+      print('Error global: ${details.exception}');
+    };
+
+    runApp(const MyApp());
+  } catch (e) {
+    print('Error crítico de inicialización: $e');
+    
+    // Podrías mostrar una pantalla de error si la inicialización falla
+    runApp(MaterialApp(
+      home: Scaffold(
+        body: Center(
+          child: Text('Error al iniciar la aplicación: $e'),
+        ),
+      ),
+    ));
+  }
 }
 
 class MyApp extends StatefulWidget {
@@ -31,48 +70,6 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> {
   ThemeData _themeData = AppTheme.lightTheme;
-  bool _isInitialized = false;
-  String? _errorMessage;
-
-  @override
-  void initState() {
-    super.initState();
-    _initializeApp();
-  }
-
-  Future<void> _initializeApp() async {
-    try {
-      await Firebase.initializeApp();
-
-      // Configurar Firestore para trabajar offline
-      FirebaseFirestore.instance.settings = const Settings(
-        persistenceEnabled: true,
-        cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-      );
-
-      // Configurar Firebase Cloud Messaging (FCM)
-      FirebaseMessaging.onBackgroundMessage(_firebaseMessagingBackgroundHandler);
-
-      // Inicializar servicio de notificaciones
-      final notificationService = NotificationService();
-      await notificationService.initialize();
-
-      // Inicializar formato de fechas en español
-      await initializeDateFormatting('es', null);
-
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _errorMessage = "Error al inicializar la app: $e";
-        });
-      }
-    }
-  }
 
   void _onThemeChanged(ThemeData theme) {
     setState(() {
@@ -82,53 +79,6 @@ class _MyAppState extends State<MyApp> {
 
   @override
   Widget build(BuildContext context) {
-    if (_errorMessage != null) {
-      return MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(Icons.error, color: Colors.red, size: 48),
-                SizedBox(height: 16),
-                Text(_errorMessage!, style: const TextStyle(color: Colors.red)),
-                SizedBox(height: 16),
-                ElevatedButton(
-                  style: AppTheme.buildElevatedButtonStyle(AppTheme.primaryColor, Colors.white),
-                  onPressed: () {
-                    setState(() {
-                      _errorMessage = null;
-                      _initializeApp();
-                    });
-                  },
-                  child: const Text('Reintentar'),
-                ),
-              ],
-            ),
-          ),
-        ),
-        debugShowCheckedModeBanner: false,
-      );
-    }
-
-    if (!_isInitialized) {
-      return const MaterialApp(
-        home: Scaffold(
-          body: Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                CircularProgressIndicator(),
-                SizedBox(height: 16),
-                Text('Cargando...', style: TextStyle(fontSize: 16)),
-              ],
-            ),
-          ),
-        ),
-        debugShowCheckedModeBanner: false,
-      );
-    }
-
     return ThemeManager(
       themeData: _themeData,
       onThemeChanged: _onThemeChanged,
@@ -137,6 +87,7 @@ class _MyAppState extends State<MyApp> {
         theme: _themeData,
         home: const SplashScreen(),
         debugShowCheckedModeBanner: false,
+        scaffoldMessengerKey: scaffoldMessengerKey,
       ),
     );
   }

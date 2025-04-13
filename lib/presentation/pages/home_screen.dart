@@ -1,10 +1,16 @@
-import 'package:chanchi_app/presentation/pages/add_transaction_screen.dart';
-import 'package:chanchi_app/presentation/pages/profile_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:intl/intl.dart';
 import 'package:chanchi_app/config/theme.dart';
+import 'package:chanchi_app/presentation/pages/accounts_screen.dart';
+import 'package:chanchi_app/presentation/pages/add_transaction_screen.dart';
+import 'package:chanchi_app/presentation/pages/profile/profile_screen.dart';
+import 'package:chanchi_app/presentation/pages/trash_screen.dart';
+import 'package:chanchi_app/presentation/widgets/analytics_dashboard.dart';
+import 'package:chanchi_app/presentation/widgets/budget_dashboard_widget.dart';
+import 'package:chanchi_app/presentation/widgets/financial_summary_dashboard_widgets.dart';
+import 'package:chanchi_app/presentation/widgets/transaction_list_widgets.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -13,10 +19,33 @@ class HomeScreen extends StatefulWidget {
   State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class _HomeScreenState extends State<HomeScreen> {
+class _HomeScreenState extends State<HomeScreen>
+    with SingleTickerProviderStateMixin {
   final _auth = FirebaseAuth.instance;
   final _firestore = FirebaseFirestore.instance;
   int _selectedIndex = 0;
+  late TabController _tabController;
+  bool _showFilterOptions = false;
+  bool _showFinancialSummary =
+      true; // Control para mostrar/ocultar el resumen financiero
+
+  // Variables para filtros
+  String? _selectedCategoryId;
+  String? _selectedAccountId;
+  DateTime? _startDate;
+  DateTime? _endDate;
+
+  @override
+  void initState() {
+    super.initState();
+    _tabController = TabController(length: 2, vsync: this);
+  }
+
+  @override
+  void dispose() {
+    _tabController.dispose();
+    super.dispose();
+  }
 
   void _onItemTapped(int index) {
     setState(() => _selectedIndex = index);
@@ -36,55 +65,198 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     }
 
+    // Determinar el título del AppBar basado en la pestaña seleccionada
+    String appBarTitle;
+    switch (_selectedIndex) {
+      case 0:
+        appBarTitle = 'Chanchi App';
+        break;
+      case 1:
+        appBarTitle = 'Agregar Transacción';
+        break;
+      case 2:
+        appBarTitle = 'Mis Cuentas';
+        break;
+      default:
+        appBarTitle = 'Chanchi App';
+    }
+
     final List<Widget> pages = [
       _buildHomePage(user.uid),
-      AddTransactionScreen(userId: user.uid),
+      AddTransactionScreen(userId: user.uid, hideAppBar: true),
+      AccountsScreen(userId: user.uid),
     ];
 
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          'Chanchi App',
-          style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-            color: AppTheme.lightBackgroundColor,
-          ),
-        ),
-        actions: [_buildProfileButton(user)],
-        backgroundColor: AppTheme.primaryColor,
-      ),
+      appBar:
+          _selectedIndex == 0
+              ? AppBar(
+                elevation: 0,
+                title: Text(
+                  appBarTitle,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: AppTheme.lightBackgroundColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                actions: [
+                  // Botón para acceder a la papelera
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => TrashScreen(userId: user.uid),
+                        ),
+                      );
+                    },
+                    tooltip: 'Papelera de transacciones',
+                  ),
+                  IconButton(
+                    icon: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.white.withOpacity(0.3),
+                      backgroundImage:
+                          user.photoURL != null
+                              ? NetworkImage(user.photoURL!)
+                              : null,
+                      child:
+                          user.photoURL == null
+                              ? Icon(
+                                Icons.person,
+                                color: Colors.white,
+                                size: 20,
+                              )
+                              : null,
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ProfileScreen(user: user),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                backgroundColor: AppTheme.primaryColor,
+                bottom:
+                    _selectedIndex == 0
+                        ? PreferredSize(
+                          preferredSize: const Size.fromHeight(48),
+                          child: Container(
+                            color: AppTheme.primaryColor,
+                            child: TabBar(
+                              controller: _tabController,
+                              indicatorColor: Colors.white,
+                              indicatorWeight: 3,
+                              labelColor: Colors.white,
+                              unselectedLabelColor: Colors.white.withOpacity(
+                                0.7,
+                              ),
+                              tabs: const [
+                                Tab(text: "General"),
+                                Tab(text: "Análisis"),
+                              ],
+                            ),
+                          ),
+                        )
+                        : null,
+              )
+              : AppBar(
+                elevation: 0,
+                title: Text(
+                  appBarTitle,
+                  style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                    color: AppTheme.lightBackgroundColor,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+                actions: [
+                  // Botón para acceder a la papelera
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => TrashScreen(userId: user.uid),
+                        ),
+                      );
+                    },
+                    tooltip: 'Papelera de transacciones',
+                  ),
+                  IconButton(
+                    icon: CircleAvatar(
+                      radius: 18,
+                      backgroundColor: Colors.white.withOpacity(0.3),
+                      backgroundImage:
+                          user.photoURL != null
+                              ? NetworkImage(user.photoURL!)
+                              : null,
+                      child:
+                          user.photoURL == null
+                              ? Icon(
+                                Icons.person,
+                                color: Colors.white,
+                                size: 20,
+                              )
+                              : null,
+                    ),
+                    onPressed: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => ProfileScreen(user: user),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(width: 8),
+                ],
+                backgroundColor: AppTheme.primaryColor,
+                bottom:
+                    _selectedIndex == 0
+                        ? PreferredSize(
+                          preferredSize: const Size.fromHeight(48),
+                          child: Container(
+                            color: AppTheme.primaryColor,
+                            child: TabBar(
+                              controller: _tabController,
+                              indicatorColor: Colors.white,
+                              indicatorWeight: 3,
+                              labelColor: Colors.white,
+                              unselectedLabelColor: Colors.white.withOpacity(
+                                0.7,
+                              ),
+                              tabs: const [
+                                Tab(text: "General"),
+                                Tab(text: "Análisis"),
+                              ],
+                            ),
+                          ),
+                        )
+                        : null,
+              ),
       body: pages[_selectedIndex],
-      bottomNavigationBar: _buildBottomNavigationBar(),
-    );
-  }
-
-  Widget _buildProfileButton(User user) {
-    return IconButton(
-      icon: CircleAvatar(
-        backgroundImage:
-            user.photoURL != null ? NetworkImage(user.photoURL!) : null,
-        child:
-            user.photoURL == null
-                ? Icon(Icons.person, color: AppTheme.cardColor)
-                : null,
+      bottomNavigationBar: BottomNavigationBar(
+        items: const [
+          BottomNavigationBarItem(
+            icon: Icon(Icons.home_rounded),
+            label: 'Inicio',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.add_circle_outline_rounded),
+            label: 'Agregar',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.account_balance_wallet_rounded),
+            label: 'Cuentas',
+          ),
+        ],
+        currentIndex: _selectedIndex,
+        selectedItemColor: AppTheme.primaryColor,
+        unselectedItemColor: AppTheme.textSecondaryColor,
+        onTap: _onItemTapped,
       ),
-      onPressed: () {
-        Navigator.of(
-          context,
-        ).push(MaterialPageRoute(builder: (_) => ProfileScreen(user: user)));
-      },
-    );
-  }
-
-  Widget _buildBottomNavigationBar() {
-    return BottomNavigationBar(
-      items: const [
-        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Inicio'),
-        BottomNavigationBarItem(icon: Icon(Icons.add), label: 'Agregar'),
-      ],
-      currentIndex: _selectedIndex,
-      selectedItemColor: AppTheme.primaryColor,
-      unselectedItemColor: AppTheme.textSecondaryColor,
-      onTap: _onItemTapped,
     );
   }
 
@@ -94,249 +266,290 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildHomePage(String userId) {
-    return RefreshIndicator(
-      onRefresh: _refreshData,
-      child: Padding(
-        padding: const EdgeInsets.all(AppTheme.spacingL),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildDashboard(userId),
-            const SizedBox(height: AppTheme.spacingM),
-            Text(
-              "Últimos movimientos",
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                color: AppTheme.textPrimaryColor,
+    return TabBarView(
+      controller: _tabController,
+      children: [
+        // Pestaña de resumen general
+        RefreshIndicator(
+          color: AppTheme.primaryColor,
+          onRefresh: _refreshData,
+          child: CustomScrollView(
+            slivers: [
+              SliverPadding(
+                padding: const EdgeInsets.all(AppTheme.spacingL),
+                sliver: SliverList(
+                  delegate: SliverChildListDelegate([
+                    // Título del resumen financiero con opción para ocultar/mostrar
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          "Resumen Financiero",
+                          style: Theme.of(context).textTheme.titleMedium
+                              ?.copyWith(fontWeight: FontWeight.bold),
+                        ),
+                        IconButton(
+                          icon: Icon(
+                            _showFinancialSummary
+                                ? Icons.keyboard_arrow_up
+                                : Icons.keyboard_arrow_down,
+                            color: AppTheme.textSecondaryColor,
+                          ),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                          onPressed: () {
+                            setState(() {
+                              _showFinancialSummary = !_showFinancialSummary;
+                            });
+                          },
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: AppTheme.spacingS),
+
+                    // Dashboard financiero mejorado (ocultable)
+                    AnimatedCrossFade(
+                      duration: const Duration(milliseconds: 300),
+                      crossFadeState:
+                          _showFinancialSummary
+                              ? CrossFadeState.showFirst
+                              : CrossFadeState.showSecond,
+                      firstChild: FinancialSummaryDashboard(
+                        userId: userId,
+                        onNavigateToTab: (index) {
+                          setState(() => _selectedIndex = index);
+                        },
+                      ),
+                      secondChild: const SizedBox(height: 0),
+                    ),
+
+                    const SizedBox(height: AppTheme.spacingL),
+
+                    // Presupuestos (ocultable junto con el resumen financiero)
+                    _showFinancialSummary
+                        ? BudgetDashboardWidget(userId: userId)
+                        : const SizedBox(),
+
+                    const SizedBox(height: AppTheme.spacingL),
+
+                    // Sección de filtros con animación
+                    AnimatedContainer(
+                      duration: const Duration(milliseconds: 300),
+                      margin: const EdgeInsets.only(bottom: AppTheme.spacingM),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Row(
+                                children: [
+                                  Text(
+                                    "Filtros",
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .titleMedium
+                                        ?.copyWith(fontWeight: FontWeight.bold),
+                                  ),
+                                  const SizedBox(width: 4),
+                                  if (_startDate != null)
+                                    Container(
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 8,
+                                        vertical: 2,
+                                      ),
+                                      decoration: BoxDecoration(
+                                        color: AppTheme.primaryColor,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Text(
+                                        "Activos",
+                                        style: TextStyle(
+                                          color: Colors.white,
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w500,
+                                        ),
+                                      ),
+                                    ),
+                                ],
+                              ),
+                              IconButton(
+                                icon: Icon(
+                                  _showFilterOptions
+                                      ? Icons.keyboard_arrow_up
+                                      : Icons.keyboard_arrow_down,
+                                  color: AppTheme.textSecondaryColor,
+                                ),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () {
+                                  setState(() {
+                                    _showFilterOptions = !_showFilterOptions;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+                          if (_showFilterOptions) ...[
+                            const SizedBox(height: AppTheme.spacingS),
+                            // Solo filtro por fecha
+                            _buildDateFilterChip(context),
+                          ],
+                        ],
+                      ),
+                    ),
+
+                    // Título con indicador de filtros y fecha actual
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Row(
+                          children: [
+                            Text(
+                              "Movimientos",
+                              style: Theme.of(
+                                context,
+                              ).textTheme.titleMedium?.copyWith(
+                                color: AppTheme.textPrimaryColor,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            if (_startDate != null)
+                              GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _startDate = null;
+                                    _endDate = null;
+                                  });
+                                },
+                                child: Icon(
+                                  Icons.filter_list_off,
+                                  size: 18,
+                                  color: AppTheme.primaryColor,
+                                ),
+                              ),
+                          ],
+                        ),
+                        Text(
+                          DateFormat('dd MMM yyyy').format(DateTime.now()),
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppTheme.textSecondaryColor),
+                        ),
+                      ],
+                    ),
+
+                    const SizedBox(height: AppTheme.spacingS),
+                  ]),
+                ),
               ),
-            ),
-            const SizedBox(height: AppTheme.spacingS),
-            Expanded(child: _buildTransactionList(userId)),
-          ],
+
+              // Lista de transacciones rediseñada
+              SliverFillRemaining(
+                child: TransactionList(
+                  userId: userId,
+                  onEditTransaction: _editTransaction,
+                  selectedCategoryId: null, // No aplicamos filtro por categoría
+                  selectedAccountId: null, // No aplicamos filtro por cuenta
+                  startDate: _startDate,
+                  endDate: _endDate,
+                ),
+              ),
+            ],
+          ),
         ),
-      ),
+
+        // Pestaña de análisis usando el widget externo
+        AnalyticsDashboard(userId: userId),
+      ],
     );
   }
 
-  Widget _buildDashboard(String userId) {
-    return StreamBuilder<DocumentSnapshot>(
-      stream: _firestore.collection('users').doc(userId).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError || !snapshot.hasData || !snapshot.data!.exists) {
-          return _buildErrorMessage("No hay datos disponibles");
-        }
+  // Método para construir el filtro de fecha
+  Widget _buildDateFilterChip(BuildContext context) {
+    final hasDateFilter = _startDate != null || _endDate != null;
 
-        final userData = snapshot.data!.data() as Map<String, dynamic>? ?? {};
-        double balance = (userData['balance'] ?? 0.0).toDouble();
-        String formattedBalance = NumberFormat.currency(
-          locale: 'es_PE',
-          symbol: 'S/',
-        ).format(balance);
+    String chipLabel = "Fecha";
+    if (hasDateFilter) {
+      final DateFormat formatter = DateFormat('dd/MM');
+      if (_startDate != null && _endDate != null) {
+        chipLabel =
+            "${formatter.format(_startDate!)} - ${formatter.format(_endDate!)}";
+      } else if (_startDate != null) {
+        chipLabel = "Desde ${formatter.format(_startDate!)}";
+      } else if (_endDate != null) {
+        chipLabel = "Hasta ${formatter.format(_endDate!)}";
+      }
+    }
 
-        return Card(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.radiusL),
-          ),
-          elevation: 4,
-          color: AppTheme.primarySwatch,
-          child: Padding(
-            padding: const EdgeInsets.all(AppTheme.spacingM),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  "Balance Actual",
-                  style: Theme.of(
-                    context,
-                  ).textTheme.titleMedium?.copyWith(color: AppTheme.cardColor),
-                ),
-                const SizedBox(height: AppTheme.spacingS),
-                Text(
-                  formattedBalance,
-                  style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-                    color: AppTheme.cardColor,
-                    fontWeight: FontWeight.bold,
-                  ),
-                ),
-              ],
+    return FilterChip(
+      label: Text(chipLabel),
+      labelStyle: TextStyle(
+        color:
+            hasDateFilter ? AppTheme.primaryColor : AppTheme.textPrimaryColor,
+        fontWeight: FontWeight.w500,
+        fontSize: 13,
+      ),
+      avatar: Icon(
+        Icons.date_range,
+        size: 16,
+        color:
+            hasDateFilter ? AppTheme.primaryColor : AppTheme.textSecondaryColor,
+      ),
+      backgroundColor: Colors.white,
+      selectedColor:
+          hasDateFilter ? AppTheme.primaryColor.withOpacity(0.1) : null,
+      selected: hasDateFilter,
+      showCheckmark: false,
+      elevation: 1,
+      shadowColor: Colors.black12,
+      side: BorderSide(
+        color: hasDateFilter ? AppTheme.primaryColor : Colors.grey.shade300,
+        width: 1,
+      ),
+      onSelected: (_) => _showDateRangePicker(context),
+    );
+  }
+
+  void _showDateRangePicker(BuildContext context) async {
+    final DateTimeRange? picked = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 1)),
+      initialDateRange:
+          _startDate != null && _endDate != null
+              ? DateTimeRange(start: _startDate!, end: _endDate!)
+              : null,
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: ColorScheme.light(
+              primary: AppTheme.primaryColor,
+              onPrimary: Colors.white,
+              onSurface: AppTheme.textPrimaryColor,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: AppTheme.primaryColor,
+              ),
+            ),
+            dialogBackgroundColor: Colors.white,
+            dialogTheme: DialogTheme(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusL),
+              ),
+              elevation: 8,
             ),
           ),
+          child: child!,
         );
       },
     );
-  }
 
-  Widget _buildTransactionList(String userId) {
-    return StreamBuilder<QuerySnapshot>(
-      stream:
-          _firestore
-              .collection('users')
-              .doc(userId)
-              .collection('transactions')
-              .orderBy('date', descending: true)
-              .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
-        if (snapshot.hasError) {
-          return _buildErrorMessage("Error al cargar transacciones");
-        }
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Center(
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Icon(
-                  Icons.account_balance_wallet,
-                  size: 48,
-                  color: AppTheme.textSecondaryColor,
-                ),
-                const SizedBox(height: AppTheme.spacingM),
-                Text(
-                  "No hay transacciones recientes",
-                  style: TextStyle(color: AppTheme.textSecondaryColor),
-                ),
-                const SizedBox(height: AppTheme.spacingS),
-                Text(
-                  "Desliza hacia abajo para actualizar",
-                  style: TextStyle(
-                    color: AppTheme.textSecondaryColor,
-                    fontSize: 12,
-                  ),
-                ),
-              ],
-            ),
-          );
-        }
-
-        return ListView.builder(
-          physics: const AlwaysScrollableScrollPhysics(),
-          itemCount: snapshot.data!.docs.length,
-          itemBuilder: (context, index) {
-            var transaction =
-                snapshot.data!.docs[index].data() as Map<String, dynamic>;
-            String docId = snapshot.data!.docs[index].id;
-            return GestureDetector(
-              onTap: () => _editTransaction(transaction, docId),
-              child: Dismissible(
-                key: Key(docId),
-                direction: DismissDirection.endToStart,
-                background: Container(
-                  color: AppTheme.errorColor,
-                  alignment: Alignment.centerRight,
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
-                  child: Icon(Icons.delete, color: AppTheme.cardColor),
-                ),
-                onDismissed:
-                    (direction) => _deleteTransaction(docId, transaction),
-                child: _buildTransactionItem(transaction),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
-
-  Widget _buildTransactionItem(Map<String, dynamic> transaction) {
-    String title = transaction['title'] ?? 'Sin título';
-    double amount = (transaction['amount'] ?? 0.0).toDouble();
-    String formattedAmount = NumberFormat.currency(
-      locale: 'es_PE',
-      symbol: 'S/',
-    ).format(amount);
-    bool isIncome = amount >= 0;
-    DateTime date = (transaction['date'] as Timestamp).toDate();
-    String formattedDate = DateFormat('d MMM, yyyy').format(date);
-
-    return Card(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.radiusM),
-      ),
-      elevation: 2,
-      child: ListTile(
-        leading: CircleAvatar(
-          backgroundColor:
-              isIncome ? AppTheme.successColor : AppTheme.errorColor,
-          child: Icon(
-            isIncome ? Icons.arrow_upward : Icons.arrow_downward,
-            color: AppTheme.cardColor,
-          ),
-        ),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(formattedDate),
-        trailing: Text(
-          formattedAmount,
-          style: TextStyle(
-            color: isIncome ? AppTheme.successColor : AppTheme.errorColor,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-      ),
-    );
-  }
-
-  void _deleteTransaction(
-    String docId,
-    Map<String, dynamic> transaction,
-  ) async {
-    try {
-      final userId = _auth.currentUser!.uid;
-      final userRef = _firestore.collection('users').doc(userId);
-      final double transactionAmount =
-          (transaction['amount'] ?? 0.0).toDouble();
-
-      await _firestore.runTransaction((transaction) async {
-        final userDoc = await transaction.get(userRef);
-        if (!userDoc.exists) {
-          throw Exception("El documento del usuario no existe");
-        }
-
-        final userData = userDoc.data() as Map<String, dynamic>;
-        final double currentBalance = (userData['balance'] ?? 0.0).toDouble();
-        final double newBalance = currentBalance - transactionAmount;
-
-        transaction.update(userRef, {'balance': newBalance});
-        transaction.delete(userRef.collection('transactions').doc(docId));
-      });
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Transacción eliminada correctamente")),
-      );
-
-      // Mostrar mensaje de deshacer durante 5 segundos
-      await Future.delayed(const Duration(seconds: 5));
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("¿Deseas deshacer los cambios?")),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text("Error al eliminar la transacción: ${e.toString()}"),
-        ),
-      );
-
-      // Deshacer cambios en caso de error
-      await Future.delayed(const Duration(seconds: 5));
-      final userId = _auth.currentUser!.uid;
-      final userRef = _firestore.collection('users').doc(userId);
-      final double transactionAmount =
-          (transaction['amount'] ?? 0.0).toDouble();
-
-      await _firestore.runTransaction((transaction) async {
-        final userDoc = await transaction.get(userRef);
-        if (!userDoc.exists) {
-          throw Exception("El documento del usuario no existe");
-        }
-
-        final userData = userDoc.data() as Map<String, dynamic>;
-        final double currentBalance = (userData['balance'] ?? 0.0).toDouble();
-        final double newBalance = currentBalance + transactionAmount;
-
-        transaction.update(userRef, {'balance': newBalance});
+    if (picked != null) {
+      setState(() {
+        _startDate = picked.start;
+        _endDate = picked.end;
       });
     }
   }
@@ -350,14 +563,9 @@ class _HomeScreenState extends State<HomeScreen> {
               transaction: transaction,
               docId: docId,
               isEditing: true,
+              hideAppBar: true,
             ),
       ),
-    );
-  }
-
-  Widget _buildErrorMessage(String message) {
-    return Center(
-      child: Text(message, style: TextStyle(color: AppTheme.errorColor)),
     );
   }
 }

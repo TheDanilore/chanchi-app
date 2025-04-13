@@ -5,7 +5,8 @@ import 'package:flutter/foundation.dart';
 
 class AuthService extends ChangeNotifier {
   final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _db = FirebaseFirestore.instance; // Firestore para guardar datos del usuario
+  final FirebaseFirestore _db =
+      FirebaseFirestore.instance; // Firestore para guardar datos del usuario
 
   User? _user;
 
@@ -18,22 +19,26 @@ class AuthService extends ChangeNotifier {
     });
   }
 
+  // Iniciar sesión con Google y registrar en Firestore
   // 🔥 Iniciar sesión con Google y registrar en Firestore
-  Future<void> signInWithGoogle() async {
+  Future<User?> signInWithGoogle() async {
     try {
       final GoogleSignInAccount? googleUser = await GoogleSignIn().signIn();
       if (googleUser == null) {
         print("Inicio de sesión cancelado por el usuario");
-        return;
+        return null; // Retorna null explícitamente para indicar cancelación
       }
 
-      final GoogleSignInAuthentication googleAuth = await googleUser.authentication;
+      final GoogleSignInAuthentication googleAuth =
+          await googleUser.authentication;
       final AuthCredential credential = GoogleAuthProvider.credential(
         accessToken: googleAuth.accessToken,
         idToken: googleAuth.idToken,
       );
 
-      final UserCredential userCredential = await _auth.signInWithCredential(credential);
+      final UserCredential userCredential = await _auth.signInWithCredential(
+        credential,
+      );
       _user = userCredential.user;
 
       if (_user != null) {
@@ -41,18 +46,18 @@ class AuthService extends ChangeNotifier {
       }
 
       notifyListeners();
+      return _user;
     } catch (e) {
       print("Error al iniciar sesión con Google: $e");
+      throw e; // Relanza la excepción para que el llamador pueda manejarla
     }
   }
 
-  // 🔥 Registrar usuario con correo y contraseña
+  // Registrar usuario con correo y contraseña
   Future<void> signUpWithEmail(String email, String password) async {
     try {
-      final UserCredential userCredential = await _auth.createUserWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final UserCredential userCredential = await _auth
+          .createUserWithEmailAndPassword(email: email, password: password);
       _user = userCredential.user;
 
       if (_user != null) {
@@ -66,13 +71,11 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // 🔥 Iniciar sesión con correo y contraseña
+  // Iniciar sesión con correo y contraseña
   Future<void> signInWithEmail(String email, String password) async {
     try {
-      final UserCredential userCredential = await _auth.signInWithEmailAndPassword(
-        email: email,
-        password: password,
-      );
+      final UserCredential userCredential = await _auth
+          .signInWithEmailAndPassword(email: email, password: password);
       _user = userCredential.user;
 
       if (_user != null) {
@@ -86,7 +89,7 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // 🔥 Guardar o actualizar usuario en Firestore
+  // Guardar o actualizar usuario en Firestore
   Future<void> _saveUserToFirestore(User user) async {
     try {
       final userRef = _db.collection('users').doc(user.uid);
@@ -114,7 +117,7 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // 🔥 Actualizar último inicio de sesión
+  // Actualizar último inicio de sesión
   Future<void> _updateLastLogin(String uid) async {
     try {
       await _db.collection('users').doc(uid).update({
@@ -125,7 +128,7 @@ class AuthService extends ChangeNotifier {
     }
   }
 
-  // 🔥 Cerrar sesión
+  // Cerrar sesión
   Future<void> signOut() async {
     await _auth.signOut();
     await GoogleSignIn().signOut();
