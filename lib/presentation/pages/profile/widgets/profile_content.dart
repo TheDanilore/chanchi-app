@@ -1,7 +1,6 @@
 import 'package:chanchi_app/presentation/pages/notification_settings_screen.dart';
 import 'package:chanchi_app/presentation/pages/profile/permissions_screen.dart';
 import 'package:chanchi_app/presentation/pages/profile/widgets/profile_stats.dart';
-import 'package:chanchi_app/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:chanchi_app/config/theme.dart';

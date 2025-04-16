@@ -435,7 +435,6 @@ class _BudgetDashboardWidgetState extends State<BudgetDashboardWidget> {
       );
     }
 
-    
     // Cargar categorías si es necesario
     if (_categoriesMap.isEmpty) {
       try {
@@ -651,7 +650,9 @@ class _BudgetDashboardWidgetState extends State<BudgetDashboardWidget> {
     );
   }
 
-  // Diálogo para editar un presupuesto existente
+  // Corrección para el diálogo de presupuesto en BudgetDashboardWidget
+  // Modificar el método _showEditBudgetDialog para ajustar el ancho del diálogo y evitar overflows
+
   Future<void> _showEditBudgetDialog(
     BuildContext context,
     Budget budget,
@@ -659,22 +660,27 @@ class _BudgetDashboardWidgetState extends State<BudgetDashboardWidget> {
     final formKey = GlobalKey<FormState>();
     double amount = budget.amount;
     String? selectedCategoryId = budget.categoryId;
-    // Usamos variables locales en lugar de estado del widget
     double thresholdValue = budget.notificationThreshold;
     bool notifyCloseValue = budget.notifyWhenClose;
     bool notifyReachedValue = budget.notifyWhenReached;
     bool notifyExceededValue = budget.notifyWhenExceeded;
 
-    // Lista de categorías para el desplegable
+    // Lista de categorías para el desplegable con manejo de overflow
     final categoryItems = [
       const DropdownMenuItem<String>(
         value: null,
-        child: Text('General (todos los gastos)'),
+        child: Text(
+          'General (todos los gastos)',
+          overflow: TextOverflow.ellipsis,
+        ),
       ),
       ..._categoriesMap.values
           .where((c) => c.type == 'expense')
           .map(
-            (c) => DropdownMenuItem<String>(value: c.id, child: Text(c.name)),
+            (c) => DropdownMenuItem<String>(
+              value: c.id,
+              child: Text(c.name, overflow: TextOverflow.ellipsis),
+            ),
           )
           .toList(),
     ];
@@ -684,186 +690,230 @@ class _BudgetDashboardWidgetState extends State<BudgetDashboardWidget> {
       builder:
           (dialogContext) => StatefulBuilder(
             builder:
-                (context, setDialogState) => AlertDialog(
-                  title: const Text('Editar Presupuesto'),
-                  content: Form(
-                    key: formKey,
-                    child: SingleChildScrollView(
+                (context, setDialogState) => Dialog(
+                  // Aumentar el ancho usando IntrinsicWidth
+                  child: ConstrainedBox(
+                    constraints: BoxConstraints(
+                      maxWidth: MediaQuery.of(context).size.width * 0.9,
+                      maxHeight: MediaQuery.of(context).size.height * 0.8,
+                    ),
+                    child: Container(
+                      padding: const EdgeInsets.all(16),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
                         children: [
-                          // Categoría (no editable si ya tiene gastos registrados)
-                          DropdownButtonFormField<String>(
-                            decoration: const InputDecoration(
-                              labelText: 'Categoría',
-                            ),
-                            value: selectedCategoryId,
-                            items: categoryItems,
-                            onChanged:
-                                (budget.currentSpent ?? 0) > 0
-                                    ? null
-                                    : (value) {
-                                      selectedCategoryId = value;
-                                    },
-                            hint:
-                                (budget.currentSpent ?? 0) > 0
-                                    ? const Text(
-                                      'No se puede cambiar (ya tiene gastos)',
-                                    )
-                                    : null,
-                          ),
-
-                          const SizedBox(height: AppTheme.spacingM),
-
-                          // Monto
-                          TextFormField(
-                            decoration: const InputDecoration(
-                              labelText: 'Límite de presupuesto',
-                              prefixText: 'S/ ',
-                            ),
-                            initialValue: amount.toString(),
-                            keyboardType: const TextInputType.numberWithOptions(
-                              decimal: true,
-                            ),
-                            validator: (value) {
-                              if (value == null || value.isEmpty) {
-                                return 'Ingresa un monto';
-                              }
-                              if (double.tryParse(value) == null ||
-                                  double.parse(value) <= 0) {
-                                return 'Ingresa un monto válido';
-                              }
-                              return null;
-                            },
-                            onSaved: (value) {
-                              amount = double.parse(value!);
-                            },
-                          ),
-
-                          const SizedBox(height: AppTheme.spacingM),
-
-                          // Umbral de notificación
                           Text(
-                            'Notificar cuando alcance:',
-                            style: TextStyle(
-                              color: AppTheme.textSecondaryColor,
-                              fontSize: 14,
+                            'Editar Presupuesto',
+                            style: Theme.of(context).textTheme.titleLarge,
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 16),
+                          Flexible(
+                            child: SingleChildScrollView(
+                              child: Form(
+                                key: formKey,
+                                child: Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    // Categoría (no editable si ya tiene gastos registrados)
+                                    DropdownButtonFormField<String>(
+                                      decoration: const InputDecoration(
+                                        labelText: 'Categoría',
+                                        isCollapsed: false,
+                                        isDense: true,
+                                        contentPadding: EdgeInsets.symmetric(
+                                          vertical: 12,
+                                          horizontal: 10,
+                                        ),
+                                      ),
+                                      value: selectedCategoryId,
+                                      items: categoryItems,
+                                      isExpanded:
+                                          true, // Importante para evitar overflow
+                                      onChanged:
+                                          (budget.currentSpent ?? 0) > 0
+                                              ? null
+                                              : (value) {
+                                                selectedCategoryId = value;
+                                              },
+                                      hint:
+                                          (budget.currentSpent ?? 0) > 0
+                                              ? const Text(
+                                                'No se puede cambiar (ya tiene gastos)',
+                                                overflow: TextOverflow.ellipsis,
+                                              )
+                                              : null,
+                                    ),
+
+                                    const SizedBox(height: AppTheme.spacingM),
+
+                                    // Monto
+                                    TextFormField(
+                                      decoration: const InputDecoration(
+                                        labelText: 'Límite de presupuesto',
+                                        prefixText: 'S/ ',
+                                      ),
+                                      initialValue: amount.toString(),
+                                      keyboardType:
+                                          const TextInputType.numberWithOptions(
+                                            decimal: true,
+                                          ),
+                                      validator: (value) {
+                                        if (value == null || value.isEmpty) {
+                                          return 'Ingresa un monto';
+                                        }
+                                        if (double.tryParse(value) == null ||
+                                            double.parse(value) <= 0) {
+                                          return 'Ingresa un monto válido';
+                                        }
+                                        return null;
+                                      },
+                                      onSaved: (value) {
+                                        amount = double.parse(value!);
+                                      },
+                                    ),
+
+                                    const SizedBox(height: AppTheme.spacingM),
+
+                                    // Umbral de notificación
+                                    Text(
+                                      'Notificar cuando alcance:',
+                                      style: TextStyle(
+                                        color: AppTheme.textSecondaryColor,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    Slider(
+                                      value: thresholdValue,
+                                      min: 0.5,
+                                      max: 0.95,
+                                      divisions: 9,
+                                      label:
+                                          '${(thresholdValue * 100).round()}%',
+                                      onChanged: (value) {
+                                        setDialogState(() {
+                                          thresholdValue = value;
+                                        });
+                                      },
+                                    ),
+
+                                    const SizedBox(height: AppTheme.spacingM),
+
+                                    // Opciones de notificación
+                                    CheckboxListTile(
+                                      title: const Text(
+                                        'Notificar cuando esté cerca del límite',
+                                      ),
+                                      value: notifyCloseValue,
+                                      onChanged: (value) {
+                                        setDialogState(() {
+                                          notifyCloseValue = value ?? true;
+                                        });
+                                      },
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                    ),
+
+                                    CheckboxListTile(
+                                      title: const Text(
+                                        'Notificar cuando alcance el límite',
+                                      ),
+                                      value: notifyReachedValue,
+                                      onChanged: (value) {
+                                        setDialogState(() {
+                                          notifyReachedValue = value ?? true;
+                                        });
+                                      },
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                    ),
+
+                                    CheckboxListTile(
+                                      title: const Text(
+                                        'Notificar cuando exceda el límite',
+                                      ),
+                                      value: notifyExceededValue,
+                                      onChanged: (value) {
+                                        setDialogState(() {
+                                          notifyExceededValue = value ?? true;
+                                        });
+                                      },
+                                      contentPadding: EdgeInsets.zero,
+                                      dense: true,
+                                    ),
+                                  ],
+                                ),
+                              ),
                             ),
                           ),
-                          Slider(
-                            value: thresholdValue,
-                            min: 0.5,
-                            max: 0.95,
-                            divisions: 9,
-                            label: '${(thresholdValue * 100).round()}%',
-                            onChanged: (value) {
-                              setDialogState(() {
-                                thresholdValue = value;
-                              });
-                            },
-                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.end,
+                            children: [
+                              TextButton(
+                                onPressed: () => Navigator.pop(dialogContext),
+                                child: const Text('Cancelar'),
+                              ),
+                              const SizedBox(width: 8),
+                              ElevatedButton(
+                                onPressed: () async {
+                                  if (formKey.currentState!.validate()) {
+                                    formKey.currentState!.save();
 
-                          const SizedBox(height: AppTheme.spacingM),
+                                    try {
+                                      // Actualizar presupuesto
+                                      final updatedBudget = budget.copyWith(
+                                        amount: amount,
+                                        categoryId: selectedCategoryId,
+                                        notifyWhenClose: notifyCloseValue,
+                                        notifyWhenReached: notifyReachedValue,
+                                        notifyWhenExceeded: notifyExceededValue,
+                                        notificationThreshold: thresholdValue,
+                                      );
 
-                          // Opciones de notificación
-                          CheckboxListTile(
-                            title: const Text(
-                              'Notificar cuando esté cerca del límite',
-                            ),
-                            value: notifyCloseValue,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                notifyCloseValue = value ?? true;
-                              });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                          ),
+                                      await _budgetService.updateBudget(
+                                        updatedBudget,
+                                      );
+                                      Navigator.pop(dialogContext);
 
-                          CheckboxListTile(
-                            title: const Text(
-                              'Notificar cuando alcance el límite',
-                            ),
-                            value: notifyReachedValue,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                notifyReachedValue = value ?? true;
-                              });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
-                          ),
-
-                          CheckboxListTile(
-                            title: const Text(
-                              'Notificar cuando exceda el límite',
-                            ),
-                            value: notifyExceededValue,
-                            onChanged: (value) {
-                              setDialogState(() {
-                                notifyExceededValue = value ?? true;
-                              });
-                            },
-                            contentPadding: EdgeInsets.zero,
-                            dense: true,
+                                      // Mostrar mensaje de éxito
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          const SnackBar(
+                                            content: Text(
+                                              'Presupuesto actualizado con éxito',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      // Mostrar error
+                                      if (context.mounted) {
+                                        ScaffoldMessenger.of(
+                                          context,
+                                        ).showSnackBar(
+                                          SnackBar(
+                                            content: Text(
+                                              'Error al actualizar presupuesto: $e',
+                                            ),
+                                          ),
+                                        );
+                                      }
+                                    }
+                                  }
+                                },
+                                child: const Text('Guardar'),
+                              ),
+                            ],
                           ),
                         ],
                       ),
                     ),
                   ),
-                  actions: [
-                    TextButton(
-                      onPressed: () => Navigator.pop(dialogContext),
-                      child: const Text('Cancelar'),
-                    ),
-                    ElevatedButton(
-                      onPressed: () async {
-                        if (formKey.currentState!.validate()) {
-                          formKey.currentState!.save();
-
-                          try {
-                            // Actualizar presupuesto
-                            final updatedBudget = budget.copyWith(
-                              amount: amount,
-                              categoryId: selectedCategoryId,
-                              notifyWhenClose: notifyCloseValue,
-                              notifyWhenReached: notifyReachedValue,
-                              notifyWhenExceeded: notifyExceededValue,
-                              notificationThreshold: thresholdValue,
-                            );
-
-                            await _budgetService.updateBudget(updatedBudget);
-                            Navigator.pop(dialogContext);
-
-                            // Mostrar mensaje de éxito
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                const SnackBar(
-                                  content: Text(
-                                    'Presupuesto actualizado con éxito',
-                                  ),
-                                ),
-                              );
-                            }
-                          } catch (e) {
-                            // Mostrar error
-                            if (context.mounted) {
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text(
-                                    'Error al actualizar presupuesto: $e',
-                                  ),
-                                ),
-                              );
-                            }
-                            print('Error al actualizar presupuesto: $e');
-                          }
-                        }
-                      },
-                      child: const Text('Guardar'),
-                    ),
-                  ],
                 ),
           ),
     );

@@ -17,8 +17,18 @@ bool areNotificationsAvailable = false;
 // Manejador de mensajes en segundo plano
 @pragma('vm:entry-point')
 Future<void> _firebaseMessagingBackgroundHandler(RemoteMessage message) async {
+  // Inicializar Firebase primero
   await Firebase.initializeApp();
-  print('Mensaje recibido en segundo plano: ${message.messageId}');
+  
+  // Registrar información detallada para diagnóstico
+  print('==== MENSAJE RECIBIDO EN SEGUNDO PLANO ====');
+  print('ID del mensaje: ${message.messageId}');
+  print('Título: ${message.notification?.title}');
+  print('Cuerpo: ${message.notification?.body}');
+  print('Datos: ${message.data}');
+  
+  // No intentar mostrar UI o hacer navegación desde aquí
+  // Solo procesar datos si es necesario
 }
 
 // Manejador de notificaciones en segundo plano
