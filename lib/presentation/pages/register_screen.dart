@@ -1,4 +1,4 @@
-import 'package:chanchi_app/presentation/pages/home_screen.dart';
+import 'package:chanchi_app/presentation/pages/home/home_screen.dart';
 import 'package:chanchi_app/presentation/widgets/custom_button.dart';
 import 'package:chanchi_app/presentation/widgets/custom_text_field.dart';
 import 'package:flutter/material.dart';

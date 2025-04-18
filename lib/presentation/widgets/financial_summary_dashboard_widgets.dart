@@ -2,16 +2,16 @@ import 'package:chanchi_app/models/currency_util.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chanchi_app/config/theme.dart';
-import 'package:chanchi_app/presentation/pages/accounts_screen.dart';
-import 'package:intl/intl.dart';
 
 class FinancialSummaryDashboard extends StatefulWidget {
   final String userId;
+  final DateTime selectedMonth;
   final Function(int)? onNavigateToTab;
 
   const FinancialSummaryDashboard({
     Key? key,
     required this.userId,
+    required this.selectedMonth,
     this.onNavigateToTab,
   }) : super(key: key);
 
@@ -23,6 +23,29 @@ class FinancialSummaryDashboard extends StatefulWidget {
 class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
   final _firestore = FirebaseFirestore.instance;
   bool _isBalanceHidden = false;
+
+  Query _getMonthlyTransactionsQuery() {
+    final firstDayOfMonth = DateTime(
+      widget.selectedMonth.year,
+      widget.selectedMonth.month,
+      1,
+    );
+    final lastDayOfMonth = DateTime(
+      widget.selectedMonth.year,
+      widget.selectedMonth.month + 1,
+      0,
+      23,
+      59,
+      59,
+    );
+
+    return _firestore
+        .collection('transactions')
+        .where('userId', isEqualTo: widget.userId)
+        .where('isInTrash', isNotEqualTo: true)
+        .where('dateTime', isGreaterThanOrEqualTo: firstDayOfMonth)
+        .where('dateTime', isLessThanOrEqualTo: lastDayOfMonth);
+  }
 
   // Método para obtener el balance total convertido a una moneda específica
   double _getTotalBalanceInCurrency(
@@ -56,10 +79,7 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
-          colors: [
-            Colors.white,
-            Colors.white,
-          ],
+          colors: [Colors.white, Colors.white],
         ),
         borderRadius: BorderRadius.circular(AppTheme.radiusXL),
         boxShadow: [
@@ -112,41 +132,114 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                       .doc(widget.userId)
                       .collection('accounts')
                       .snapshots(),
-              builder: (context, snapshot) {
-                if (snapshot.connectionState == ConnectionState.waiting) {
+              builder: (context, accountsSnapshot) {
+                if (accountsSnapshot.connectionState ==
+                    ConnectionState.waiting) {
                   return _buildBalanceSkeleton();
                 }
 
-                final accounts = snapshot.data?.docs ?? [];
+                final accounts = accountsSnapshot.data?.docs ?? [];
 
-                // Usa la moneda predeterminada (PEN por defecto)
-                final totalBalance = _getTotalBalanceInCurrency(
-                  accounts,
-                  'PEN',
-                );
+                // Ahora vamos a obtener todas las transacciones (no en papelera) para ajustar los balances
+                return StreamBuilder<QuerySnapshot>(
+                  stream:
+                      _firestore
+                          .collection('transactions')
+                          .where('userId', isEqualTo: widget.userId)
+                          .where(
+                            'isInTrash',
+                            isEqualTo: true,
+                          ) // Solo las que están en papelera
+                          .snapshots(),
+                  builder: (context, trashTransactionsSnapshot) {
+                    if (trashTransactionsSnapshot.connectionState ==
+                        ConnectionState.waiting) {
+                      return _buildBalanceSkeleton();
+                    }
 
-                return Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      _isBalanceHidden
-                          ? "S/•••.••"
-                          : CurrencyUtil.format(
-                              amount: totalBalance,
-                              currencyCode: 'PEN',
-                            ),
-                      style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                        fontWeight: FontWeight.bold,
-                        color: totalBalance >= 0 ? AppTheme.successColor : AppTheme.errorColor,
-                      ),
-                    ),
-                    Text(
-                      "Balance Total",
-                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                        color: AppTheme.textSecondaryColor,
-                      ),
-                    ),
-                  ],
+                    // Ajustar los balances excluyendo las transacciones en papelera
+                    final trashTransactions =
+                        trashTransactionsSnapshot.data?.docs ?? [];
+
+                    // Crea un mapa de balances a ajustar por cuenta
+                    Map<String, double> adjustmentsByAccount = {};
+
+                    for (var doc in trashTransactions) {
+                      final data = doc.data() as Map<String, dynamic>;
+                      final accountId = data['accountId'] as String?;
+                      final amount = (data['amount'] ?? 0).toDouble();
+                      final type = data['type'] as String?;
+
+                      if (accountId != null) {
+                        if (!adjustmentsByAccount.containsKey(accountId)) {
+                          adjustmentsByAccount[accountId] = 0;
+                        }
+
+                        // Invertir el efecto que la transacción en papelera tuvo en el balance
+                        if (type == 'income') {
+                          // Si era un ingreso, restamos para revertir su efecto
+                          adjustmentsByAccount[accountId] =
+                              (adjustmentsByAccount[accountId] ?? 0) - amount;
+                        } else {
+                          // Si era un gasto, sumamos para revertir su efecto
+                          adjustmentsByAccount[accountId] =
+                              (adjustmentsByAccount[accountId] ?? 0) + amount;
+                        }
+                      }
+                    }
+
+                    // Crear nuevas cuentas con balances ajustados
+                    List<QueryDocumentSnapshot> adjustedAccounts = [];
+                    for (var account in accounts) {
+                      final accountData =
+                          account.data() as Map<String, dynamic>;
+                      final accountId = account.id;
+
+                      // Si hay ajustes para esta cuenta, aplicarlos
+                      if (adjustmentsByAccount.containsKey(accountId)) {
+                        final adjustment = adjustmentsByAccount[accountId]!;
+                        accountData['balance'] =
+                            (accountData['balance'] ?? 0).toDouble() +
+                            adjustment;
+                      }
+
+                      adjustedAccounts.add(account);
+                    }
+
+                    // Usa la moneda predeterminada (PEN por defecto)
+                    final totalBalance = _getTotalBalanceInCurrency(
+                      adjustedAccounts,
+                      'PEN',
+                    );
+
+                    return Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          _isBalanceHidden
+                              ? "S/•••.••"
+                              : CurrencyUtil.format(
+                                amount: totalBalance,
+                                currencyCode: 'PEN',
+                              ),
+                          style: Theme.of(
+                            context,
+                          ).textTheme.headlineMedium?.copyWith(
+                            fontWeight: FontWeight.bold,
+                            color:
+                                totalBalance >= 0
+                                    ? AppTheme.successColor
+                                    : AppTheme.errorColor,
+                          ),
+                        ),
+                        Text(
+                          "Balance Total",
+                          style: Theme.of(context).textTheme.bodyMedium
+                              ?.copyWith(color: AppTheme.textSecondaryColor),
+                        ),
+                      ],
+                    );
+                  },
                 );
               },
             ),
@@ -177,7 +270,8 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                 }
 
                 final savings = totalIncome - totalExpense;
-                final savingsColor = savings >= 0 ? AppTheme.successColor : AppTheme.errorColor;
+                final savingsColor =
+                    savings >= 0 ? AppTheme.successColor : AppTheme.errorColor;
 
                 return Column(
                   children: [
@@ -207,7 +301,7 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                       ],
                     ),
                     const SizedBox(height: AppTheme.spacingS),
-                    
+
                     // Ahorro
                     Container(
                       margin: const EdgeInsets.only(top: AppTheme.spacingXS),
@@ -215,35 +309,75 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                       child: ClipRRect(
                         borderRadius: BorderRadius.circular(3),
                         child: LinearProgressIndicator(
-                          value: totalIncome > 0 ? totalExpense / totalIncome : 0,
+                          value:
+                              totalIncome > 0 ? totalExpense / totalIncome : 0,
                           backgroundColor: Colors.grey.shade200,
-                          color: totalExpense < totalIncome ? AppTheme.successColor : AppTheme.errorColor,
+                          color:
+                              totalExpense < totalIncome
+                                  ? AppTheme.successColor
+                                  : AppTheme.errorColor,
                         ),
                       ),
                     ),
-                    
-                    Padding(
-                      padding: const EdgeInsets.only(top: AppTheme.spacingS),
+
+                    Container(
+                      padding: const EdgeInsets.all(AppTheme.spacingM),
+                      decoration: BoxDecoration(
+                        color:
+                            savings >= 0
+                                ? AppTheme.successColor.withOpacity(0.1)
+                                : AppTheme.errorColor.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+                        border: Border.all(
+                          color:
+                              savings >= 0
+                                  ? AppTheme.successColor.withOpacity(0.3)
+                                  : AppTheme.errorColor.withOpacity(0.3),
+                        ),
+                      ),
                       child: Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            "Ahorro este mes",
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AppTheme.textSecondaryColor,
+                          CircleAvatar(
+                            radius: 20,
+                            backgroundColor: Colors.white,
+                            child: Icon(
+                              savings >= 0
+                                  ? Icons.trending_up
+                                  : Icons.trending_down,
+                              color:
+                                  savings >= 0
+                                      ? AppTheme.successColor
+                                      : AppTheme.errorColor,
                             ),
                           ),
-                          Text(
-                            _isBalanceHidden
-                                ? "S/•••.••"
-                                : CurrencyUtil.format(
-                                    amount: savings,
-                                    currencyCode: 'PEN',
-                                  ),
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                              color: savingsColor,
-                            ),
+                          const SizedBox(width: AppTheme.spacingM),
+                          Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                "Ahorro este mes",
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodyMedium?.copyWith(
+                                  color: AppTheme.textSecondaryColor,
+                                ),
+                              ),
+                              Text(
+                                CurrencyUtil.format(
+                                  amount: savings,
+                                  currencyCode: 'PEN',
+                                ),
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleMedium?.copyWith(
+                                  fontWeight: FontWeight.bold,
+                                  color:
+                                      savings >= 0
+                                          ? AppTheme.successColor
+                                          : AppTheme.errorColor,
+                                ),
+                              ),
+                            ],
                           ),
                         ],
                       ),
@@ -286,7 +420,7 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                     ),
                   );
                 }
-                
+
                 final accountsToShow = accounts.take(2).toList();
 
                 return Column(
@@ -297,7 +431,9 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                       children: [
                         Text(
                           "Cuentas Principales",
-                          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleSmall?.copyWith(
                             color: AppTheme.textPrimaryColor,
                             fontWeight: FontWeight.bold,
                           ),
@@ -312,7 +448,9 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                           },
                           child: Text(
                             "Ver todas",
-                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                            style: Theme.of(
+                              context,
+                            ).textTheme.bodySmall?.copyWith(
                               color: AppTheme.primaryColor,
                               fontWeight: FontWeight.w500,
                             ),
@@ -342,8 +480,12 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                                       width: 40,
                                       height: 40,
                                       decoration: BoxDecoration(
-                                        color: _getAccountColor(data).withOpacity(0.1),
-                                        borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                                        color: _getAccountColor(
+                                          data,
+                                        ).withOpacity(0.1),
+                                        borderRadius: BorderRadius.circular(
+                                          AppTheme.radiusM,
+                                        ),
                                       ),
                                       child: Icon(
                                         _getAccountIcon(data['iconName']),
@@ -354,18 +496,24 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                                     const SizedBox(width: AppTheme.spacingM),
                                     Expanded(
                                       child: Column(
-                                        crossAxisAlignment: CrossAxisAlignment.start,
+                                        crossAxisAlignment:
+                                            CrossAxisAlignment.start,
                                         children: [
                                           Text(
                                             data['name'] ?? 'Sin nombre',
-                                            style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.titleSmall?.copyWith(
                                               color: AppTheme.textPrimaryColor,
                                             ),
                                           ),
                                           Text(
                                             "${data['type'] ?? ''} - ${data['institution'] ?? ''}",
-                                            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                              color: AppTheme.textSecondaryColor,
+                                            style: Theme.of(
+                                              context,
+                                            ).textTheme.bodySmall?.copyWith(
+                                              color:
+                                                  AppTheme.textSecondaryColor,
                                             ),
                                           ),
                                         ],
@@ -375,11 +523,17 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                                       _isBalanceHidden
                                           ? "S/•••.••"
                                           : CurrencyUtil.format(
-                                              amount: balance,
-                                              currencyCode: data['currencyCode'] ?? 'PEN',
-                                            ),
-                                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                        color: isPositive ? AppTheme.successColor : AppTheme.errorColor,
+                                            amount: balance,
+                                            currencyCode:
+                                                data['currencyCode'] ?? 'PEN',
+                                          ),
+                                      style: Theme.of(
+                                        context,
+                                      ).textTheme.titleSmall?.copyWith(
+                                        color:
+                                            isPositive
+                                                ? AppTheme.successColor
+                                                : AppTheme.errorColor,
                                         fontWeight: FontWeight.w600,
                                       ),
                                     ),
@@ -393,34 +547,6 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                               ],
                             );
                           }).toList(),
-                          
-                          if (accounts.length > 2)
-                            TextButton(
-                              onPressed: () {
-                                Navigator.of(context).push(
-                                  MaterialPageRoute(
-                                    builder: (_) => AccountsScreen(userId: widget.userId),
-                                  ),
-                                );
-                              },
-                              style: TextButton.styleFrom(
-                                foregroundColor: AppTheme.primaryColor,
-                              ),
-                              child: Row(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  Text(
-                                    "Ver todas mis cuentas",
-                                    style: TextStyle(
-                                      fontSize: 13,
-                                      fontWeight: FontWeight.w500,
-                                    ),
-                                  ),
-                                  const SizedBox(width: 4),
-                                  const Icon(Icons.chevron_right, size: 16),
-                                ],
-                              ),
-                            ),
                         ],
                       ),
                     ),
@@ -432,19 +558,6 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
         ),
       ),
     );
-  }
-
-  Query _getMonthlyTransactionsQuery() {
-    // Obtener primer y último día del mes actual
-    final now = DateTime.now();
-    final firstDayOfMonth = DateTime(now.year, now.month, 1);
-    final lastDayOfMonth = DateTime(now.year, now.month + 1, 0, 23, 59, 59);
-
-    return _firestore
-        .collection('transactions')
-        .where('userId', isEqualTo: widget.userId)
-        .where('dateTime', isGreaterThanOrEqualTo: firstDayOfMonth)
-        .where('dateTime', isLessThanOrEqualTo: lastDayOfMonth);
   }
 
   Widget _buildBalanceSkeleton() {
@@ -580,10 +693,7 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
           Text(
             _isBalanceHidden
                 ? "S/•••.••"
-                : CurrencyUtil.format(
-                    amount: amount,
-                    currencyCode: 'PEN',
-                  ),
+                : CurrencyUtil.format(amount: amount, currencyCode: 'PEN'),
             style: Theme.of(context).textTheme.titleMedium?.copyWith(
               fontWeight: FontWeight.bold,
               color: color,
@@ -591,9 +701,9 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
           ),
           Text(
             "Este mes",
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: AppTheme.textSecondaryColor,
-            ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: AppTheme.textSecondaryColor),
           ),
         ],
       ),
@@ -615,7 +725,7 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
     }
     return Icons.account_balance_wallet;
   }
-  
+
   Color _getAccountColor(Map<String, dynamic> data) {
     final color = data['color'];
     if (color != null && color is String && color.startsWith('#')) {

@@ -7,6 +7,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({super.key});
@@ -61,15 +62,31 @@ class _SplashScreenState extends State<SplashScreen>
         cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
       );
 
-      // Verificar conexión a internet (opcional)
+      // Verificar estado de conexión y guardar en preferencias
+      bool isConnected = false;
       try {
         final result = await InternetAddress.lookup('google.com');
-        if (result.isNotEmpty && result[0].rawAddress.isNotEmpty) {
-          print('Conectado a internet');
-        }
+        isConnected = result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+        print('Conectado a internet: $isConnected');
+
+        // Guardar el estado de conexión para uso en toda la app
+        await _saveConnectionStatus(isConnected);
       } on SocketException catch (_) {
         print('Sin conexión a internet');
-        // Podrías mostrar un diálogo o manejar la falta de conexión
+        await _saveConnectionStatus(false);
+
+        // Mostrar mensaje de modo offline
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text(
+                'Modo sin conexión. Los cambios se sincronizarán cuando vuelvas a estar online.',
+              ),
+              duration: const Duration(seconds: 4),
+              backgroundColor: Colors.amber[700],
+            ),
+          );
+        }
       }
 
       // Inicializar servicio de notificaciones
@@ -79,7 +96,7 @@ class _SplashScreenState extends State<SplashScreen>
       // Inicializar formato de fechas en español
       await initializeDateFormatting('es', null);
 
-      // Verificar autenticación actual (opcional)
+      // Verificar autenticación actual
       final user = FirebaseAuth.instance.currentUser;
       if (user == null) {
         print('No hay usuario autenticado');
@@ -118,6 +135,12 @@ class _SplashScreenState extends State<SplashScreen>
         });
       }
     }
+  }
+
+  // Método para guardar el estado de conexión
+  Future<void> _saveConnectionStatus(bool isConnected) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('isConnected', isConnected);
   }
 
   @override

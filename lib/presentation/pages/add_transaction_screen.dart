@@ -1,6 +1,8 @@
+import 'dart:io';
 import 'package:chanchi_app/models/category.dart';
 import 'package:chanchi_app/models/currency_util.dart';
-import 'package:chanchi_app/presentation/pages/home_screen.dart';
+import 'package:chanchi_app/models/transaction.dart';
+import 'package:chanchi_app/presentation/pages/home/home_screen.dart';
 import 'package:chanchi_app/presentation/widgets/category_selector.dart';
 import 'package:chanchi_app/services/category_service.dart';
 import 'package:chanchi_app/services/transaction_service.dart';
@@ -327,6 +329,16 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     );
   }
 
+  //método nuevo para verificar la conectividad
+  Future<bool> _checkConnectivity() async {
+    try {
+      final result = await InternetAddress.lookup('google.com');
+      return result.isNotEmpty && result[0].rawAddress.isNotEmpty;
+    } on SocketException catch (_) {
+      return false;
+    }
+  }
+
   void _saveTransaction() async {
     if (_formKey.currentState!.validate()) {
       if (_selectedAccountId == null) {
@@ -365,51 +377,84 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         if (widget.isDuplicating || !widget.isEditing) {
           transactionData['createdAt'] = FieldValue.serverTimestamp();
 
-          // Crear nueva transacción
-          await _firestore.runTransaction((transaction) async {
-            // Obtener la cuenta
-            final accountRef = _firestore
-                .collection('users')
-                .doc(widget.userId)
-                .collection('accounts')
-                .doc(_selectedAccountId);
-            final accountDoc = await transaction.get(accountRef);
+          // Verificar si estamos en modo offline
+          final isConnected = await _checkConnectivity();
 
-            if (!accountDoc.exists) {
-              throw Exception("La cuenta no existe");
+          if (isConnected) {
+            // Modo online: Crear nueva transacción usando FirebaseFirestore
+            await _firestore.runTransaction((transaction) async {
+              // Obtener la cuenta
+              final accountRef = _firestore
+                  .collection('users')
+                  .doc(widget.userId)
+                  .collection('accounts')
+                  .doc(_selectedAccountId);
+              final accountDoc = await transaction.get(accountRef);
+
+              if (!accountDoc.exists) {
+                throw Exception("La cuenta no existe");
+              }
+
+              final accountData = accountDoc.data() as Map<String, dynamic>;
+              double currentBalance =
+                  (accountData['balance'] ?? 0.0).toDouble();
+
+              // Ajustar balance según tipo de transacción
+              if (_transactionType == 'expense') {
+                currentBalance -= amount; // Restar un gasto
+              } else {
+                currentBalance += amount; // Sumar un ingreso
+              }
+
+              // Si estamos duplicando y tenemos un ID de documento, actualizar ese documento
+              // en lugar de crear uno nuevo
+              DocumentReference docRef;
+              if (widget.isDuplicating && widget.docId != null) {
+                docRef = _firestore
+                    .collection('transactions')
+                    .doc(widget.docId);
+                transaction.update(docRef, transactionData);
+              } else {
+                // Crear una nueva transacción
+                docRef = _firestore.collection('transactions').doc();
+                transaction.set(docRef, transactionData);
+              }
+
+              // Actualizar el balance de la cuenta
+              transaction.update(accountRef, {'balance': currentBalance});
+            });
+          } else {
+            // Modo offline: Usar TransactionService para guardar pendiente
+            // Crear un objeto de transacción financiera para usar con el servicio
+            final transaction = FinancialTransaction(
+              id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+              userId: widget.userId,
+              accountId: _selectedAccountId!,
+              categoryId: _selectedCategoryId ?? 'general',
+              description: description,
+              amount: amount,
+              dateTime: dateTime,
+              type: _transactionType,
+              notes: notes.isEmpty ? null : notes,
+              currencyCode: _selectedCurrency ?? 'PEN',
+              isInTrash: false,
+            );
+
+            await _transactionService.addTransaction(transaction);
+
+            // Mostrar mensaje de operación pendiente
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(
+                  content: Text(
+                    "Transacción guardada localmente. Se sincronizará cuando haya conexión.",
+                  ),
+                  backgroundColor: Colors.amber,
+                  duration: Duration(seconds: 4),
+                ),
+              );
             }
-
-            final accountData = accountDoc.data() as Map<String, dynamic>;
-            double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
-
-            // Ajustar balance según tipo de transacción
-            if (_transactionType == 'expense') {
-              currentBalance -= amount; // Restar un gasto
-            } else {
-              currentBalance += amount; // Sumar un ingreso
-            }
-
-            // Si estamos duplicando y tenemos un ID de documento, actualizar ese documento
-            // en lugar de crear uno nuevo
-            DocumentReference docRef;
-            if (widget.isDuplicating && widget.docId != null) {
-              docRef = _firestore.collection('transactions').doc(widget.docId);
-              transaction.update(docRef, transactionData);
-            } else {
-              // Crear una nueva transacción
-              docRef = _firestore.collection('transactions').doc();
-              transaction.set(docRef, transactionData);
-            }
-
-            // Actualizar el balance de la cuenta
-            transaction.update(accountRef, {'balance': currentBalance});
-
-            // Actualizar los presupuestos solo si es un gasto
-            if (_transactionType == 'expense') {
-              // Aquí no podemos actualizar presupuestos dentro de la transacción
-              // Lo haremos después
-            }
-          });
+          }
 
           // Actualizar presupuestos para la nueva transacción (solo si es un gasto)
           if (_transactionType == 'expense') {
@@ -433,188 +478,242 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             transactionData['createdAt'] = FieldValue.serverTimestamp();
           }
 
-          // Referencia a la cuenta seleccionada
-          final accountRef = _firestore
-              .collection('users')
-              .doc(widget.userId)
-              .collection('accounts')
-              .doc(_selectedAccountId);
+          // Verificar si estamos en modo offline
+          final isConnected = await _checkConnectivity();
 
-          if (widget.isEditing && widget.docId != null) {
-            // Editar transacción existente
-            final transactionRef = _firestore
-                .collection('transactions')
-                .doc(widget.docId);
+          if (isConnected) {
+            // Modo online: Actualizar normalmente
+            // ...resto del código existente para actualizar transacciones...
 
-            await _firestore.runTransaction((transaction) async {
-              // Obtener la transacción original y la cuenta actual
-              final transactionDoc = await transaction.get(transactionRef);
-              final accountDoc = await transaction.get(accountRef);
+            // Referencia a la cuenta seleccionada
+            final accountRef = _firestore
+                .collection('users')
+                .doc(widget.userId)
+                .collection('accounts')
+                .doc(_selectedAccountId);
 
-              if (!transactionDoc.exists || !accountDoc.exists) {
-                throw Exception("Documento no encontrado");
-              }
+            if (widget.isEditing && widget.docId != null) {
+              // Editar transacción existente
+              final transactionRef = _firestore
+                  .collection('transactions')
+                  .doc(widget.docId);
 
-              final oldData = transactionDoc.data() as Map<String, dynamic>;
-              final accountData = accountDoc.data() as Map<String, dynamic>;
-              double currentBalance =
-                  (accountData['balance'] ?? 0.0).toDouble();
+              await _firestore.runTransaction((transaction) async {
+                // Obtener la transacción original y la cuenta actual
+                final transactionDoc = await transaction.get(transactionRef);
+                final accountDoc = await transaction.get(accountRef);
 
-              // Si es la misma cuenta, hacemos el ajuste normal
-              if (_originalAccountId == _selectedAccountId) {
-                // Ajustar balance según tipo
-                double oldAmount = (oldData['amount'] ?? 0.0).toDouble();
-
-                // Deshacer la transacción original
-                if (oldData['type'] == 'expense') {
-                  currentBalance +=
-                      oldAmount; // Sumamos el valor original (revertimos el gasto)
-                } else {
-                  currentBalance -=
-                      oldAmount; // Restamos el valor original (revertimos el ingreso)
+                if (!transactionDoc.exists || !accountDoc.exists) {
+                  throw Exception("Documento no encontrado");
                 }
 
-                // Aplicar la nueva transacción
+                final oldData = transactionDoc.data() as Map<String, dynamic>;
+                final accountData = accountDoc.data() as Map<String, dynamic>;
+                double currentBalance =
+                    (accountData['balance'] ?? 0.0).toDouble();
+
+                // Si es la misma cuenta, hacemos el ajuste normal
+                if (_originalAccountId == _selectedAccountId) {
+                  // Ajustar balance según tipo
+                  double oldAmount = (oldData['amount'] ?? 0.0).toDouble();
+
+                  // Deshacer la transacción original
+                  if (oldData['type'] == 'expense') {
+                    currentBalance +=
+                        oldAmount; // Sumamos el valor original (revertimos el gasto)
+                  } else {
+                    currentBalance -=
+                        oldAmount; // Restamos el valor original (revertimos el ingreso)
+                  }
+
+                  // Aplicar la nueva transacción
+                  if (_transactionType == 'expense') {
+                    currentBalance -= amount; // Restamos el nuevo gasto
+                  } else {
+                    currentBalance += amount; // Sumamos el nuevo ingreso
+                  }
+
+                  // Actualizar la transacción y el balance de la cuenta
+                  transaction.update(transactionRef, transactionData);
+                  transaction.update(accountRef, {'balance': currentBalance});
+                } else {
+                  // Si cambió la cuenta, necesitamos ajustar ambas cuentas
+                  // ... resto del código existente para cambio de cuenta ...
+
+                  // 1. Obtener la cuenta original
+                  final originalAccountRef = _firestore
+                      .collection('users')
+                      .doc(widget.userId)
+                      .collection('accounts')
+                      .doc(_originalAccountId);
+
+                  final originalAccountDoc = await transaction.get(
+                    originalAccountRef,
+                  );
+
+                  if (!originalAccountDoc.exists) {
+                    throw Exception("La cuenta original no existe");
+                  }
+
+                  final originalAccountData =
+                      originalAccountDoc.data() as Map<String, dynamic>;
+                  double originalBalance =
+                      (originalAccountData['balance'] ?? 0.0).toDouble();
+
+                  // 2. Ajustar el balance de la cuenta original (revertir la transacción)
+                  if (_originalTransactionType == 'expense') {
+                    originalBalance += _originalAmount!; // Revertir un gasto
+                  } else {
+                    originalBalance -= _originalAmount!; // Revertir un ingreso
+                  }
+
+                  // 3. Actualizar la cuenta original
+                  transaction.update(originalAccountRef, {
+                    'balance': originalBalance,
+                  });
+
+                  // 4. Ajustar el balance de la nueva cuenta (aplicar la nueva transacción)
+                  if (_transactionType == 'expense') {
+                    currentBalance -= amount; // Aplicar un nuevo gasto
+                  } else {
+                    currentBalance += amount; // Aplicar un nuevo ingreso
+                  }
+
+                  // 5. Actualizar la nueva cuenta
+                  transaction.update(accountRef, {'balance': currentBalance});
+
+                  // 6. Actualizar la transacción
+                  transaction.update(transactionRef, transactionData);
+                }
+              });
+            } else {
+              // Crear nueva transacción
+              await _firestore.runTransaction((transaction) async {
+                // Obtener la cuenta
+                final accountDoc = await transaction.get(accountRef);
+
+                if (!accountDoc.exists) {
+                  throw Exception("La cuenta no existe");
+                }
+
+                final accountData = accountDoc.data() as Map<String, dynamic>;
+                double currentBalance =
+                    (accountData['balance'] ?? 0.0).toDouble();
+
+                // Ajustar balance según tipo de transacción
                 if (_transactionType == 'expense') {
-                  currentBalance -= amount; // Restamos el nuevo gasto
+                  currentBalance -= amount; // Restar un gasto
                 } else {
-                  currentBalance += amount; // Sumamos el nuevo ingreso
+                  currentBalance += amount; // Sumar un ingreso
                 }
 
-                // Actualizar la transacción y el balance de la cuenta
-                transaction.update(transactionRef, transactionData);
+                // Crear nueva transacción
+                final docRef = _firestore.collection('transactions').doc();
+
+                // Actualizar el balance de la cuenta y crear la transacción
                 transaction.update(accountRef, {'balance': currentBalance});
-              } else {
-                // Si cambió la cuenta, necesitamos ajustar ambas cuentas
-
-                // 1. Obtener la cuenta original
-                final originalAccountRef = _firestore
-                    .collection('users')
-                    .doc(widget.userId)
-                    .collection('accounts')
-                    .doc(_originalAccountId);
-
-                final originalAccountDoc = await transaction.get(
-                  originalAccountRef,
-                );
-
-                if (!originalAccountDoc.exists) {
-                  throw Exception("La cuenta original no existe");
-                }
-
-                final originalAccountData =
-                    originalAccountDoc.data() as Map<String, dynamic>;
-                double originalBalance =
-                    (originalAccountData['balance'] ?? 0.0).toDouble();
-
-                // 2. Ajustar el balance de la cuenta original (revertir la transacción)
-                if (_originalTransactionType == 'expense') {
-                  originalBalance += _originalAmount!; // Revertir un gasto
-                } else {
-                  originalBalance -= _originalAmount!; // Revertir un ingreso
-                }
-
-                // 3. Actualizar la cuenta original
-                transaction.update(originalAccountRef, {
-                  'balance': originalBalance,
-                });
-
-                // 4. Ajustar el balance de la nueva cuenta (aplicar la nueva transacción)
-                if (_transactionType == 'expense') {
-                  currentBalance -= amount; // Aplicar un nuevo gasto
-                } else {
-                  currentBalance += amount; // Aplicar un nuevo ingreso
-                }
-
-                // 5. Actualizar la nueva cuenta
-                transaction.update(accountRef, {'balance': currentBalance});
-
-                // 6. Actualizar la transacción
-                transaction.update(transactionRef, transactionData);
-              }
-            });
-
-            // Actualizar presupuestos si es necesario
-            if (_transactionType == 'expense' ||
-                _originalTransactionType == 'expense') {
-              // Si la categoría o el monto cambió, actualizar los presupuestos
-              if (_originalTransactionType == 'expense') {
-                // Quitar el gasto anterior
-                await _transactionService.updateBudgetsForTransaction(
-                  widget.userId,
-                  _originalAmount!,
-                  widget.transaction!['categoryId'],
-                  (widget.transaction!['dateTime'] as Timestamp).toDate(),
-                  false, // quitar
-                );
-              }
-
-              if (_transactionType == 'expense') {
-                // Añadir el nuevo gasto
-                await _transactionService.updateBudgetsForTransaction(
-                  widget.userId,
-                  amount,
-                  _selectedCategoryId,
-                  dateTime,
-                  true, // añadir
-                );
-              }
-            }
-
-            if (mounted) {
-              Navigator.of(context).pop();
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text("Transacción actualizada con éxito"),
-                ),
-              );
+                transaction.set(docRef, transactionData);
+              });
             }
           } else {
-            // Crear nueva transacción
-            await _firestore.runTransaction((transaction) async {
-              // Obtener la cuenta
-              final accountDoc = await transaction.get(accountRef);
+            // Modo offline: Usar TransactionService
+            if (widget.isEditing && widget.docId != null) {
+              // Actualizar transacción existente
+              final transaction = FinancialTransaction(
+                id: widget.docId!,
+                userId: widget.userId,
+                accountId: _selectedAccountId!,
+                categoryId: _selectedCategoryId ?? 'general',
+                description: description,
+                amount: amount,
+                dateTime: dateTime,
+                type: _transactionType,
+                notes: notes.isEmpty ? null : notes,
+                currencyCode: _selectedCurrency ?? 'PEN',
+                isInTrash: false,
+              );
 
-              if (!accountDoc.exists) {
-                throw Exception("La cuenta no existe");
+              await _transactionService.updateTransaction(transaction);
+
+              // Mostrar mensaje de operación pendiente
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      "Transacción actualizada localmente. Se sincronizará cuando haya conexión.",
+                    ),
+                    backgroundColor: Colors.amber,
+                    duration: Duration(seconds: 4),
+                  ),
+                );
               }
-
-              final accountData = accountDoc.data() as Map<String, dynamic>;
-              double currentBalance =
-                  (accountData['balance'] ?? 0.0).toDouble();
-
-              // Ajustar balance según tipo de transacción
-              if (_transactionType == 'expense') {
-                currentBalance -= amount; // Restar un gasto
-              } else {
-                currentBalance += amount; // Sumar un ingreso
-              }
-
+            } else {
               // Crear nueva transacción
-              final docRef = _firestore.collection('transactions').doc();
+              final transaction = FinancialTransaction(
+                id: 'temp_${DateTime.now().millisecondsSinceEpoch}',
+                userId: widget.userId,
+                accountId: _selectedAccountId!,
+                categoryId: _selectedCategoryId ?? 'general',
+                description: description,
+                amount: amount,
+                dateTime: dateTime,
+                type: _transactionType,
+                notes: notes.isEmpty ? null : notes,
+                currencyCode: _selectedCurrency ?? 'PEN',
+                isInTrash: false,
+              );
 
-              // Actualizar el balance de la cuenta y crear la transacción
-              transaction.update(accountRef, {'balance': currentBalance});
-              transaction.set(docRef, transactionData);
-            });
+              await _transactionService.addTransaction(transaction);
 
-            // Actualizar presupuestos para la nueva transacción (solo si es un gasto)
-            if (_transactionType == 'expense') {
-              await _transactionService.updateBudgetsForNewTransaction(
-                context,
+              // Mostrar mensaje de operación pendiente
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text(
+                      "Transacción guardada localmente. Se sincronizará cuando haya conexión.",
+                    ),
+                    backgroundColor: Colors.amber,
+                    duration: Duration(seconds: 4),
+                  ),
+                );
+              }
+            }
+          }
+
+          // Actualizar presupuestos si es necesario
+          if (_transactionType == 'expense' ||
+              _originalTransactionType == 'expense') {
+            // Si la categoría o el monto cambió, actualizar los presupuestos
+            if (_originalTransactionType == 'expense') {
+              // Quitar el gasto anterior
+              await _transactionService.updateBudgetsForTransaction(
                 widget.userId,
-                transactionData,
+                _originalAmount!,
+                widget.transaction!['categoryId'],
+                (widget.transaction!['dateTime'] as Timestamp).toDate(),
+                false, // quitar
               );
             }
 
-            if (mounted) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const HomeScreen()),
-              );
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text("Transacción agregada con éxito")),
+            if (_transactionType == 'expense') {
+              // Añadir el nuevo gasto
+              await _transactionService.updateBudgetsForTransaction(
+                widget.userId,
+                amount,
+                _selectedCategoryId,
+                dateTime,
+                true, // añadir
               );
             }
+          }
+
+          if (mounted) {
+            Navigator.of(context).pop();
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(
+                content: Text("Transacción actualizada con éxito"),
+              ),
+            );
           }
         }
       } catch (e) {

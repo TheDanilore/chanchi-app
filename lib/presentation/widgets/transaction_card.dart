@@ -30,13 +30,14 @@ class TransactionCard extends StatelessWidget {
     final isExpense = transaction['type'] == 'expense';
     final dateTime = (transaction['dateTime'] as Timestamp).toDate();
     final amount = (transaction['amount'] as num).toDouble();
+    final isTemp = docId.startsWith('temp_');
 
     // Determinar colores basados en tipo y categoría
     final Color amountColor =
         isExpense ? AppTheme.errorColor : AppTheme.successColor;
 
     final Color categoryColor =
-        category != null && category!.color.isNotEmpty
+        category?.color != null && category!.color.isNotEmpty
             ? Color(
               int.parse(category!.color.substring(1, 7), radix: 16) +
                   0xFF000000,
@@ -55,87 +56,138 @@ class TransactionCard extends StatelessWidget {
             ? _getCurrencySymbol(transaction['currencyCode'])
             : '';
 
-    return Card(
-      elevation: 0,
-      color: Colors.white,
-      margin: EdgeInsets.zero,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(AppTheme.radiusM),
+    return Container(
+      margin: const EdgeInsets.symmetric(vertical: 6.0),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+        border:
+            isTemp
+                ? Border.all(color: Colors.amber.shade300, width: 1.5)
+                : null,
       ),
-      child: InkWell(
-        onTap: () => onEdit(transaction, docId),
-        onLongPress: () => _showOptions(context),
-        borderRadius: BorderRadius.circular(AppTheme.radiusM),
-        child: Padding(
-          padding: const EdgeInsets.all(AppTheme.spacingM),
-          child: Row(
-            children: [
-              // Icono de categoría
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: categoryColor.withOpacity(0.2),
-                  borderRadius: BorderRadius.circular(AppTheme.radiusM),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(AppTheme.radiusL),
+        child: InkWell(
+          borderRadius: BorderRadius.circular(AppTheme.radiusL),
+          onTap: () => onEdit(transaction, docId),
+          onLongPress: () => _showOptions(context),
+          child: Padding(
+            padding: const EdgeInsets.all(AppTheme.spacingM),
+            child: Row(
+              children: [
+                // Icono con fondo de color
+                Container(
+                  width: 48,
+                  height: 48,
+                  decoration: BoxDecoration(
+                    color: categoryColor.withOpacity(0.15),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                    boxShadow: [
+                      BoxShadow(
+                        color: categoryColor.withOpacity(0.1),
+                        blurRadius: 4,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(
+                    _getCategoryIcon(),
+                    color: categoryColor,
+                    size: 24,
+                  ),
                 ),
-                child: Icon(_getCategoryIcon(), color: categoryColor, size: 24),
-              ),
 
-              const SizedBox(width: AppTheme.spacingM),
+                const SizedBox(width: AppTheme.spacingM),
 
-              // Descripción, fecha y cuenta
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      transaction['description'] ?? 'Sin descripción',
-                      style: const TextStyle(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w500,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      DateFormat('dd MMM yyyy • HH:mm').format(dateTime),
-                      style: TextStyle(
-                        color: AppTheme.textSecondaryColor,
-                        fontSize: 14,
-                      ),
-                    ),
-                    if (account != null) ...[
-                      const SizedBox(height: 4),
+                // Descripción, fecha y cuenta
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        account!.name,
-                        style: TextStyle(
-                          color: AppTheme.textSecondaryColor,
-                          fontSize: 14,
+                        transaction['description'] ?? 'Sin descripción',
+                        style: const TextStyle(
+                          fontSize: 16,
+                          fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Icon(
+                            Icons.calendar_today_outlined,
+                            size: 12,
+                            color: AppTheme.textSecondaryColor,
+                          ),
+                          SizedBox(width: 4),
+                          Text(
+                            DateFormat('dd MMM yyyy • HH:mm').format(dateTime),
+                            style: TextStyle(
+                              color: AppTheme.textSecondaryColor,
+                              fontSize: 12,
+                            ),
+                          ),
+                        ],
+                      ),
+                      if (account != null) ...[
+                        const SizedBox(height: 4),
+                        Row(
+                          children: [
+                            Icon(
+                              Icons.account_balance_wallet_outlined,
+                              size: 12,
+                              color: AppTheme.textSecondaryColor,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              account!.name,
+                              style: TextStyle(
+                                color: AppTheme.textSecondaryColor,
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
-              ),
 
-              // Monto
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                children: [
-                  Text(
+                // Monto
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: amountColor.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                  ),
+                  child: Text(
                     '${isExpense ? '-' : '+'} $currencySymbol$amountText',
                     style: TextStyle(
                       color: amountColor,
-                      fontSize: 18,
-                      fontWeight: FontWeight.w600,
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
                     ),
                   ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ),
@@ -206,7 +258,7 @@ class TransactionCard extends StatelessWidget {
       'shop_sharp': Icons.shop_sharp,
     };
 
-    if (category != null && iconMap.containsKey(category!.iconName)) {
+    if (category?.iconName != null && iconMap.containsKey(category!.iconName)) {
       return iconMap[category!.iconName]!;
     }
 

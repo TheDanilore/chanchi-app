@@ -1,11 +1,16 @@
-import 'package:chanchi_app/presentation/pages/add_transaction_screen.dart';
-import 'package:chanchi_app/presentation/widgets/transaction_card.dart';
-import 'package:chanchi_app/services/transaction_list_service.dart';
+import 'dart:async';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
+import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:chanchi_app/config/theme.dart';
 import 'package:chanchi_app/models/category.dart';
 import 'package:chanchi_app/models/account.dart';
+import 'package:chanchi_app/services/connectivity_service.dart';
+import 'package:chanchi_app/services/transaction_list_service.dart';
+import 'package:chanchi_app/presentation/widgets/transaction_list/empty_state_widget.dart';
+import 'package:chanchi_app/presentation/widgets/transaction_list/transaction_date_group.dart';
+import 'package:chanchi_app/presentation/pages/add_transaction_screen.dart';
+import 'package:intl/intl.dart';
+import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 
 class TransactionList extends StatefulWidget {
   final String userId;
@@ -14,7 +19,10 @@ class TransactionList extends StatefulWidget {
   final String? selectedAccountId;
   final DateTime? startDate;
   final DateTime? endDate;
+  final DateTime selectedMonth;
   final Function(String)? onError;
+  final VoidCallback? onClearFilters;
+  final VoidCallback? onRefresh;
 
   const TransactionList({
     Key? key,
@@ -24,7 +32,10 @@ class TransactionList extends StatefulWidget {
     this.selectedAccountId,
     this.startDate,
     this.endDate,
+    required this.selectedMonth,
     this.onError,
+    this.onClearFilters,
+    this.onRefresh,
   }) : super(key: key);
 
   @override
@@ -36,164 +47,159 @@ class _TransactionListState extends State<TransactionList> {
   Map<String, Category> _categoriesCache = {};
   Map<String, Account> _accountsCache = {};
   bool _processingAction = false;
+  bool _isLoading = true;
+  List<Map<String, dynamic>> _transactions = [];
+
+  StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
+  final ConnectivityService _connectivityService = ConnectivityService();
 
   @override
   void initState() {
     super.initState();
     _service = TransactionListService(userId: widget.userId);
     _loadData();
+
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) {
+      _loadTransactions();
+    });
+  }
+
+  @override
+  void dispose() {
+    _connectivitySubscription?.cancel();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
+    setState(() {
+      _isLoading = true;
+    });
+
     try {
       final categories = await _service.loadCategories();
       final accounts = await _service.loadAccounts();
-      
+      await _loadTransactions();
+
       if (mounted) {
         setState(() {
           _categoriesCache = categories;
           _accountsCache = accounts;
+          _isLoading = false;
         });
       }
     } catch (e) {
       print('Error al cargar datos: $e');
       widget.onError?.call('Error al cargar datos: $e');
+
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _loadTransactions() async {
+    try {
+      print(
+        'TRANSACTION LIST: Cargando transacciones - Mes: ${widget.selectedMonth}',
+      );
+      print(
+        'TRANSACTION LIST: Filtros - Cuenta: ${widget.selectedAccountId}, Categoría: ${widget.selectedCategoryId}',
+      );
+      print(
+        'TRANSACTION LIST: Rango de fechas: ${widget.startDate} - ${widget.endDate}',
+      );
+
+      final transactions = await _service.getTransactions(
+        selectedMonth: DateTime(
+          widget.selectedMonth.year,
+          widget.selectedMonth.month,
+          1,
+        ),
+      );
+
+      print('TRANSACTION LIST: Transacciones cargadas: ${transactions.length}');
+
+      if (mounted) {
+        setState(() {
+          _transactions = transactions;
+        });
+      }
+
+      widget.onRefresh?.call();
+    } catch (e) {
+      print('TRANSACTION LIST: Error al cargar transacciones: $e');
+      widget.onError?.call('Error al cargar transacciones: $e');
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream: _service.getTransactionsQuery(
-        selectedAccountId: widget.selectedAccountId,
-        selectedCategoryId: widget.selectedCategoryId,
-      ).snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (_isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        if (snapshot.hasError) {
-          widget.onError?.call(
-            'Error al cargar transacciones: ${snapshot.error}',
+    if (_transactions.isEmpty) {
+      return EmptyStateWidget(
+        isFiltered:
+            widget.startDate != null ||
+            widget.endDate != null ||
+            widget.selectedCategoryId != null ||
+            widget.selectedAccountId != null,
+        onClearFilters: widget.onClearFilters,
+      );
+    }
+
+    final groupedTransactions = _groupTransactionsByDay(_transactions);
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL),
+      child: ListView.builder(
+        itemCount: groupedTransactions.length,
+        itemBuilder: (context, index) {
+          final dateGroup = groupedTransactions.keys.elementAt(index);
+          final transactionsForDay = groupedTransactions[dateGroup]!;
+
+          return TransactionDateGroup(
+            dateTitle: dateGroup,
+            transactions: transactionsForDay,
+            onEditTransaction: widget.onEditTransaction,
+            categoriesCache: _categoriesCache,
+            accountsCache: _accountsCache,
+            onDuplicate: _duplicateTransaction,
+            onMoveToTrash: _confirmAndMoveToTrash,
           );
-
-          return Center(
-            child: Text(
-              "Error al cargar transacciones: ${snapshot.error}",
-              style: TextStyle(color: AppTheme.errorColor),
-            ),
-          );
-        }
-
-        final documents = snapshot.data?.docs ?? [];
-
-        if (documents.isEmpty) {
-          return _buildEmptyState();
-        }
-
-        // Aplicar filtros adicionales
-        final filteredDocs = _service.filterTransactionsByDate(
-          documents,
-          widget.startDate,
-          widget.endDate,
-        );
-
-        if (filteredDocs.isEmpty) {
-          return _buildEmptyState(isFiltered: true);
-        }
-
-        // Agrupar transacciones por día
-        final groupedTransactions = _service.groupTransactionsByDay(filteredDocs);
-
-        return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL),
-          child: ListView.builder(
-            itemCount: groupedTransactions.length,
-            itemBuilder: (context, index) {
-              final dateGroup = groupedTransactions.keys.elementAt(index);
-              final transactionsForDay = groupedTransactions[dateGroup]!;
-
-              return Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Padding(
-                    padding: const EdgeInsets.symmetric(
-                      vertical: AppTheme.spacingS,
-                    ),
-                    child: Text(
-                      dateGroup,
-                      style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                        color: AppTheme.textSecondaryColor,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                  ...transactionsForDay.map((doc) {
-                    final data = doc.data() as Map<String, dynamic>;
-                    final docId = doc.id;
-
-                    return TransactionCard(
-                      transaction: data,
-                      docId: docId,
-                      onEdit: widget.onEditTransaction,
-                      category: _categoriesCache[data['categoryId']],
-                      account: _accountsCache[data['accountId']],
-                      onDuplicate: () => _duplicateTransaction(data),
-                      onMoveToTrash: () async {
-                        if (await _confirmMoveToTrash(docId)) {
-                          await _moveToTrash(docId);
-                        }
-                      },
-                    );
-                  }).toList(),
-                  const Divider(),
-                ],
-              );
-            },
-          ),
-        );
-      },
+        },
+      ),
     );
   }
 
-  Widget _buildEmptyState({bool isFiltered = false}) {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(
-            Icons.receipt_long_outlined,
-            size: 64,
-            color: AppTheme.textSecondaryColor.withOpacity(0.5),
-          ),
-          const SizedBox(height: AppTheme.spacingM),
-          Text(
-            isFiltered 
-                ? "No hay transacciones con los filtros seleccionados" 
-                : "No hay transacciones",
-            style: TextStyle(
-              color: AppTheme.textSecondaryColor,
-              fontSize: 16,
-            ),
-          ),
-          if (isFiltered) ...[
-            const SizedBox(height: AppTheme.spacingM),
-            TextButton.icon(
-              onPressed: () {
-                // Esta acción se manejaría desde la pantalla principal
-                // donde se aplican los filtros
-              },
-              icon: Icon(Icons.filter_list_off, color: AppTheme.primaryColor),
-              label: Text(
-                "Quitar filtros",
-                style: TextStyle(color: AppTheme.primaryColor),
-              ),
-            ),
-          ]
-        ],
-      ),
-    );
+  Map<String, List<Map<String, dynamic>>> _groupTransactionsByDay(
+    List<Map<String, dynamic>> transactions,
+  ) {
+    final Map<String, List<Map<String, dynamic>>> grouped = {};
+
+    for (var transaction in transactions) {
+      final dateTime = (transaction['dateTime'] as Timestamp).toDate();
+      final dateKey = DateFormat('dd MMM yyyy').format(dateTime);
+
+      if (!grouped.containsKey(dateKey)) {
+        grouped[dateKey] = [];
+      }
+
+      grouped[dateKey]!.add(transaction);
+    }
+
+    return grouped;
+  }
+
+  void _confirmAndMoveToTrash(String docId) async {
+    if (await _confirmMoveToTrash(docId)) {
+      await _moveToTrash(docId);
+    }
   }
 
   Future<bool> _confirmMoveToTrash(String docId) async {
@@ -225,13 +231,27 @@ class _TransactionListState extends State<TransactionList> {
 
   Future<void> _moveToTrash(String docId) async {
     if (_processingAction) return;
-    
+
     setState(() {
       _processingAction = true;
     });
 
     try {
-      await _service.moveToTrash(docId, context);
+      print('TransactionList: Moviendo a papelera: $docId');
+      print('Transacciones antes de eliminar: ${_transactions.length}');
+
+      setState(() {
+        _transactions.removeWhere((t) => t['id'] == docId);
+      });
+
+      print('Transacciones después de eliminar: ${_transactions.length}');
+
+      await _service.moveToTrash(docId, context, refreshUI: false);
+      await _loadTransactions();
+    } catch (e) {
+      print('Error en TransactionList al mover a papelera: $e');
+      await _loadTransactions();
+      widget.onError?.call('Error al mover a papelera: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -243,34 +263,36 @@ class _TransactionListState extends State<TransactionList> {
 
   void _duplicateTransaction(Map<String, dynamic> transaction) async {
     if (_processingAction) return;
-    
+
     setState(() {
       _processingAction = true;
     });
 
     try {
       final newTransactionId = await _service.duplicateTransaction(
-        transaction, 
-        context
+        transaction,
+        context,
       );
-      
+
       if (newTransactionId != null) {
-        final docSnapshot = await FirebaseFirestore.instance
-          .collection('transactions')
-          .doc(newTransactionId)
-          .get();
+        final docSnapshot =
+            await FirebaseFirestore.instance
+                .collection('transactions')
+                .doc(newTransactionId)
+                .get();
         final duplicatedTransaction = docSnapshot.data();
 
-        if (duplicatedTransaction != null) {
+        if (duplicatedTransaction != null && mounted) {
           Navigator.of(context).push(
             MaterialPageRoute(
-              builder: (_) => AddTransactionScreen(
-                userId: widget.userId,
-                transaction: duplicatedTransaction,
-                docId: newTransactionId,
-                isEditing: true,
-                isDuplicating: true,
-              ),
+              builder:
+                  (_) => AddTransactionScreen(
+                    userId: widget.userId,
+                    transaction: duplicatedTransaction,
+                    docId: newTransactionId,
+                    isEditing: true,
+                    isDuplicating: true,
+                  ),
             ),
           );
         }

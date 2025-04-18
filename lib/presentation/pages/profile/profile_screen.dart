@@ -1,4 +1,3 @@
-// profile_screen.dart
 import 'package:chanchi_app/config/theme.dart';
 import 'package:chanchi_app/presentation/pages/profile/services/profile_service.dart';
 import 'package:chanchi_app/presentation/pages/profile/widgets/profile_content.dart';

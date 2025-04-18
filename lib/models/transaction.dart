@@ -11,6 +11,7 @@ class FinancialTransaction {
   final String type; // "expense" o "income"
   final String? notes;
   final String currencyCode;
+  final bool isInTrash;
 
 
   FinancialTransaction({
@@ -24,6 +25,7 @@ class FinancialTransaction {
     required this.type,
     this.notes,
     this.currencyCode = 'PEN', // Valor predeterminado
+    this.isInTrash = false,
   });
 
   // Métodos para convertir de/a Firestore
@@ -38,6 +40,7 @@ class FinancialTransaction {
       'type': type,
       'notes': notes,
       'currencyCode': currencyCode,
+      'isInTrash': isInTrash,
     };
   }
 
@@ -55,6 +58,7 @@ class FinancialTransaction {
       type: map['type'] ?? 'expense',
       notes: map['notes'],
       currencyCode: map['currencyCode'] ?? 'PEN',
+      isInTrash: map['isInTrash'] ?? 'false',
     );
   }
 }

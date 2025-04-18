@@ -38,8 +38,6 @@ class NotificationService {
       // 1. Inicializar zonas horarias
       tz.initializeTimeZones();
 
-      
-
       try {
         tz.setLocalLocation(tz.getLocation('America/Lima'));
       } catch (e) {
@@ -385,14 +383,6 @@ class NotificationService {
         '$hour:${minute.toString().padLeft(2, '0')}',
       );
 
-      // También programar una notificación para el próximo minuto como verificación
-      await scheduleNotification(
-        title: 'Verificación de recordatorio',
-        body:
-            'Esta es una notificación de prueba para verificar que el sistema puede programar notificaciones',
-        seconds: 60,
-      );
-
       return true;
     } catch (e) {
       print('Error al programar recordatorio diario: $e');
@@ -601,7 +591,6 @@ class NotificationService {
         print(
           'Restaurando recordatorio diario previamente habilitado para las $hour:${minute.toString().padLeft(2, '0')}',
         );
-        await scheduleDailyReminder(hour: hour, minute: minute);
       }
     } catch (e) {
       print('Error al restaurar recordatorio diario: $e');

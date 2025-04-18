@@ -1,23 +1,35 @@
+import 'dart:convert';
+import 'package:chanchi_app/services/connectivity_service.dart';
 import 'package:chanchi_app/services/transaction_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:chanchi_app/models/category.dart';
 import 'package:chanchi_app/models/account.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class TransactionListService {
   final FirebaseFirestore _firestore;
   final TransactionService _transactionService;
+  final ConnectivityService _connectivityService;
   final String userId;
 
   TransactionListService({
     required this.userId,
     FirebaseFirestore? firestore,
     TransactionService? transactionService,
+    ConnectivityService? connectivityService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _transactionService = transactionService ?? TransactionService();
+       _transactionService = transactionService ?? TransactionService(),
+       _connectivityService = connectivityService ?? ConnectivityService();
 
-  // Obtener categorías para caché
+  Future<void> _enableOfflineCapabilities() async {
+    _firestore.settings = const Settings(
+      persistenceEnabled: true,
+      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
+    );
+  }
+
   Future<Map<String, Category>> loadCategories() async {
     try {
       final categories = await _firestore.collection('categories').get();
@@ -41,7 +53,6 @@ class TransactionListService {
     }
   }
 
-  // Obtener cuentas para caché
   Future<Map<String, Account>> loadAccounts() async {
     try {
       final accounts =
@@ -72,28 +83,124 @@ class TransactionListService {
     }
   }
 
-  // Consulta de transacciones
-  Query getTransactionsQuery({
-    String? selectedAccountId,
-    String? selectedCategoryId,
-  }) {
-    Query query = _firestore
-        .collection('transactions')
-        .where('userId', isEqualTo: userId)
-        .where('isInTrash', isNotEqualTo: true);
+  Future<List<Map<String, dynamic>>> getLocalTransactions(String userId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'cached_transactions_$userId';
+      final cachedJson = prefs.getString(cacheKey);
 
-    if (selectedAccountId != null) {
-      query = query.where('accountId', isEqualTo: selectedAccountId);
+      if (cachedJson == null || cachedJson.isEmpty) {
+        return [];
+      }
+
+      final List<dynamic> rawTransactions = jsonDecode(cachedJson) as List;
+
+      return rawTransactions.map((item) {
+        final transaction = Map<String, dynamic>.from(item as Map);
+
+        if (transaction['dateTime'] is Map) {
+          final dateMap = transaction['dateTime'] as Map;
+          transaction['dateTime'] = Timestamp(
+            dateMap['_seconds'] ??
+                DateTime.now().millisecondsSinceEpoch ~/ 1000,
+            dateMap['_nanoseconds'] ?? 0,
+          );
+        } else if (!(transaction['dateTime'] is Timestamp)) {
+          transaction['dateTime'] = Timestamp.now();
+        }
+
+        return transaction;
+      }).toList();
+    } catch (e) {
+      print('Error al obtener transacciones locales: $e');
+      return [];
     }
-
-    if (selectedCategoryId != null) {
-      query = query.where('categoryId', isEqualTo: selectedCategoryId);
-    }
-
-    return query.orderBy('dateTime', descending: true).limit(100);
   }
 
-  // Filtrar transacciones por fecha
+  Future<List<Map<String, dynamic>>> getTransactions({
+    DateTime? startDate,
+    DateTime? endDate,
+    required DateTime selectedMonth,
+  }) async {
+    final List<Map<String, dynamic>> result = [];
+
+    // Obtener el primer y último día del mes seleccionado
+    final firstDayOfMonth = DateTime(
+      selectedMonth.year,
+      selectedMonth.month,
+      1,
+    );
+    final lastDayOfMonth = DateTime(
+      selectedMonth.year,
+      selectedMonth.month + 1,
+      0,
+      23,
+      59,
+      59,
+      999,
+    );
+
+    try {
+      // Consulta base para transacciones de Firestore
+      Query query = _firestore
+          .collection('transactions')
+          .where('userId', isEqualTo: userId)
+          .where('isInTrash', isNotEqualTo: true);
+
+      // Filtro de fechas del mes seleccionado
+      query = query
+          .where('dateTime', isGreaterThanOrEqualTo: firstDayOfMonth)
+          .where('dateTime', isLessThanOrEqualTo: lastDayOfMonth);
+
+      // Obtener transacciones de Firestore
+      final QuerySnapshot snapshot =
+          await query.orderBy('dateTime', descending: true).limit(100).get();
+
+      // Convertir transacciones de Firestore
+      for (var doc in snapshot.docs) {
+        final data = doc.data() as Map<String, dynamic>;
+        result.add({'id': doc.id, ...data});
+      }
+
+      // Obtener transacciones locales
+      final localTransactions = await getLocalTransactions(userId);
+
+      // Filtrar transacciones locales
+      for (var transaction in localTransactions) {
+        final transactionDate = (transaction['dateTime'] as Timestamp).toDate();
+
+        // Filtro riguroso de mes
+        if (transactionDate.isBefore(firstDayOfMonth) ||
+            transactionDate.isAfter(lastDayOfMonth)) {
+          continue; // Saltar transacciones fuera del mes seleccionado
+        }
+
+        bool matchesFilters = (transaction['isInTrash'] != true);
+
+        if (matchesFilters) {
+          bool exists = result.any((r) => r['id'] == transaction['id']);
+          if (!exists) {
+            result.add(transaction);
+          }
+        }
+      }
+
+      // Ordenar por fecha (más reciente primero)
+      result.sort((a, b) {
+        final dateA = (a['dateTime'] as Timestamp).toDate();
+        final dateB = (b['dateTime'] as Timestamp).toDate();
+        return dateB.compareTo(dateA);
+      });
+
+      print('Transacciones encontradas en el mes: ${result.length}');
+      print('Mes seleccionado: $selectedMonth');
+    } catch (e) {
+      print('Error al obtener transacciones: $e');
+    }
+
+    return result;
+  }
+
   List<QueryDocumentSnapshot> filterTransactionsByDate(
     List<QueryDocumentSnapshot> docs,
     DateTime? startDate,
@@ -117,7 +224,6 @@ class TransactionListService {
     }).toList();
   }
 
-  // Agrupar transacciones por día
   Map<String, List<QueryDocumentSnapshot>> groupTransactionsByDay(
     List<QueryDocumentSnapshot> docs,
   ) {
@@ -127,7 +233,6 @@ class TransactionListService {
       final data = doc.data() as Map<String, dynamic>;
       final dateTime = (data['dateTime'] as Timestamp).toDate();
 
-      // Formatear fecha para agrupar
       final dateKey = DateFormat('dd MMM yyyy').format(dateTime);
 
       if (!grouped.containsKey(dateKey)) {
@@ -140,32 +245,54 @@ class TransactionListService {
     return grouped;
   }
 
-  // Operaciones con transacciones
-  Future<void> moveToTrash(String docId, BuildContext context) async {
+  Future<void> _updateLocalTransactionTrashStatus(
+    String docId,
+    bool isInTrash,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'cached_transactions_$userId';
+      final cachedJson = prefs.getString(cacheKey);
+
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        final List<dynamic> rawList = jsonDecode(cachedJson) as List;
+        List<Map<String, dynamic>> transactions = [];
+
+        for (var item in rawList) {
+          Map<String, dynamic> transaction = Map<String, dynamic>.from(item);
+          if (transaction['id'] == docId) {
+            transaction['isInTrash'] = isInTrash;
+          }
+          transactions.add(transaction);
+        }
+
+        await prefs.setString(cacheKey, jsonEncode(transactions));
+        print(
+          'Estado de papelera de transacción $docId actualizado localmente: $isInTrash',
+        );
+      }
+    } catch (e) {
+      print('Error al actualizar estado de papelera localmente: $e');
+      throw e;
+    }
+  }
+
+  Future<void> moveToTrash(
+    String docId,
+    BuildContext context, {
+    bool refreshUI = true,
+  }) async {
     try {
       await _transactionService.moveToTrash(userId, docId);
 
-      // Verificar si el context aún es válido
-      if (!context.mounted) return;
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: const Text("Transacción movida a papelera"),
-          action: SnackBarAction(
-            label: "Deshacer",
-            onPressed: () async {
-              await _transactionService.restoreFromTrash(userId, docId);
-            },
-          ),
-        ),
-      );
+      if (refreshUI) {
+        // Implement any necessary UI refresh logic
+      }
     } catch (e) {
-      // Verificar si el context aún es válido
-      if (!context.mounted) return;
-
+      print('Error moving to trash: $e');
       ScaffoldMessenger.of(
         context,
-      ).showSnackBar(SnackBar(content: Text("Error: ${e.toString()}")));
+      ).showSnackBar(SnackBar(content: Text('Error moving to trash: $e')));
     }
   }
 
@@ -177,12 +304,10 @@ class TransactionListService {
       final String newTransactionId = await _transactionService
           .duplicateTransaction(userId, transaction);
 
-      // Verificar si el context aún es válido
       if (!context.mounted) return null;
 
       return newTransactionId;
     } catch (e) {
-      // Verificar si el context aún es válido
       if (!context.mounted) return null;
 
       ScaffoldMessenger.of(context).showSnackBar(
@@ -192,26 +317,24 @@ class TransactionListService {
     }
   }
 
-  // Métodos para papelera
-Future<void> restoreFromTrash(String docId, BuildContext context) async {
-  try {
-    await _transactionService.restoreFromTrash(userId, docId);
+  Future<void> restoreFromTrash(String docId, BuildContext context) async {
+    try {
+      await _transactionService.restoreFromTrash(userId, docId);
 
-    // Verificar si el context aún es válido
-    if (!context.mounted) return;
+      if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text("Transacción restaurada con éxito")),
-    );
-  } catch (e) {
-    // Verificar si el context aún es válido
-    if (!context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Transacción restaurada con éxito")),
+      );
+    } catch (e) {
+      if (!context.mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text("Error al restaurar: ${e.toString()}")),
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("Error al restaurar: ${e.toString()}")),
+      );
+    }
   }
-}
+
   Future<void> deleteTransactionPermanently(
     String docId,
     BuildContext context,
