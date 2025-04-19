@@ -1,4 +1,4 @@
-// lib/features/transactions/presentation/screens/add_transaction_screen.dart
+import 'package:chanchi_app/core/widgets/calculator_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chanchi_app/core/config/theme.dart';
@@ -202,6 +202,32 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
         });
       }
     }
+  }
+
+  void _showCalculator() {
+    // Obtener valor actual si existe
+    double? currentValue;
+    if (_amountController.text.isNotEmpty) {
+      currentValue = double.tryParse(_amountController.text);
+    }
+
+    showDialog(
+      context: context,
+      builder:
+          (context) => CalculatorDialog(
+            initialValue: currentValue,
+            onResult: (result) {
+              setState(() {
+                // Si el resultado termina en .0, mostrar solo el entero
+                if (result == result.toInt().toDouble()) {
+                  _amountController.text = result.toInt().toString();
+                } else {
+                  _amountController.text = result.toString();
+                }
+              });
+            },
+          ),
+    );
   }
 
   void _confirmDelete() async {
@@ -552,6 +578,11 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                                     CurrencyUtil
                                         .currencies[_selectedCurrency ?? 'PEN']!
                                         .symbol,
+                                suffixIcon: IconButton(
+                                  icon: const Icon(Icons.calculate_outlined),
+                                  tooltip: 'Calculadora',
+                                  onPressed: () => _showCalculator(),
+                                ),
                               ),
                               keyboardType:
                                   const TextInputType.numberWithOptions(

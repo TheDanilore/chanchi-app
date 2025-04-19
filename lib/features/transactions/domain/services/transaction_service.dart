@@ -952,7 +952,45 @@ class TransactionService {
     }
   }
 
-  // Mover una transacción a la papelera
+  // Método para actualizar el estado de papelera de una transacción localmente
+  Future<void> _updateLocalTransactionTrashStatus(
+    String userId,
+    String transactionId,
+    bool isInTrash,
+  ) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'cached_transactions_$userId';
+      final cachedJson = prefs.getString(cacheKey);
+
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        final List<dynamic> rawList = jsonDecode(cachedJson) as List;
+        List<Map<String, dynamic>> transactions = [];
+        bool found = false;
+
+        for (var item in rawList) {
+          Map<String, dynamic> transaction = Map<String, dynamic>.from(item);
+          if (transaction['id'] == transactionId) {
+            transaction['isInTrash'] = isInTrash;
+            found = true;
+          }
+          transactions.add(transaction);
+        }
+
+        if (found) {
+          // Guardar las transacciones actualizadas
+          await prefs.setString(cacheKey, jsonEncode(transactions));
+          print(
+            'Estado de papelera de transacción $transactionId actualizado localmente: $isInTrash',
+          );
+        }
+      }
+    } catch (e) {
+      print('Error al actualizar estado de papelera localmente: $e');
+    }
+  }
+
+  // Corrección para el método moveToTrash
   Future<void> moveToTrash(
     String userId,
     String transactionId, {
@@ -967,6 +1005,9 @@ class TransactionService {
             .doc(transactionId);
 
         await _firestore.runTransaction((transaction) async {
+          // PRIMER PASO: TODAS LAS LECTURAS
+
+          // 1. Leer la transacción
           final transactionDoc = await transaction.get(transactionRef);
 
           if (!transactionDoc.exists) {
@@ -981,6 +1022,13 @@ class TransactionService {
           }
 
           final accountId = transactionData['accountId'];
+          final categoryId = transactionData['categoryId'] ?? '';
+          final isCreditCardPayment = categoryId == 'credit_card_payment';
+          final fromAccountId = transactionData['fromAccountId'];
+          final amount = (transactionData['amount'] ?? 0.0).toDouble();
+          final transactionType = transactionData['type'] ?? 'expense';
+
+          // 2. Leer la cuenta principal
           final accountRef = _firestore
               .collection('users')
               .doc(userId)
@@ -995,40 +1043,13 @@ class TransactionService {
 
           final accountData = accountDoc.data() as Map<String, dynamic>;
           final isCreditCard = accountData['isCreditCard'] ?? false;
-          final categoryId = transactionData['categoryId'];
-          final isCreditCardPayment = categoryId == 'credit_card_payment';
-          final fromAccountId = transactionData['fromAccountId'];
-
           double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
-          double amount = (transactionData['amount'] ?? 0.0).toDouble();
 
-          // Manejo especial para tarjetas de crédito
-          if (isCreditCard) {
-            if (transactionData['type'] == 'expense') {
-              // Si es un gasto, al eliminar, reducir el balance (revertir el gasto)
-              currentBalance -= amount;
-            } else if (transactionData['type'] == 'income') {
-              // Si es un pago, al eliminar, aumentar el balance (revertir el pago)
-              currentBalance += amount;
-            }
-          } else {
-            // Para cuentas normales, mantener el comportamiento anterior
-            if (transactionData['type'] == 'expense') {
-              currentBalance += amount;
-            } else {
-              currentBalance -= amount;
-            }
-          }
+          // 3. Si es un pago de tarjeta, leer también la cuenta de origen
+          Map<String, dynamic>? fromAccountData;
+          DocumentSnapshot? fromAccountDoc;
+          double? fromAccountBalance;
 
-          // Marcar como en papelera y actualizar el balance
-          transaction.update(transactionRef, {
-            'isInTrash': true,
-            'trashedAt': FieldValue.serverTimestamp(),
-          });
-
-          transaction.update(accountRef, {'balance': currentBalance});
-
-          // Si es un pago de tarjeta de crédito, devolver el monto a la cuenta de origen
           if (isCreditCardPayment && fromAccountId != null) {
             final fromAccountRef = _firestore
                 .collection('users')
@@ -1036,21 +1057,58 @@ class TransactionService {
                 .collection('accounts')
                 .doc(fromAccountId);
 
-            final fromAccountDoc = await transaction.get(fromAccountRef);
+            fromAccountDoc = await transaction.get(fromAccountRef);
 
-            if (fromAccountDoc.exists) {
-              final fromAccountData =
-                  fromAccountDoc.data() as Map<String, dynamic>;
-              double fromAccountBalance =
-                  (fromAccountData['balance'] ?? 0.0).toDouble();
-
-              // Devolver el monto a la cuenta de origen
-              fromAccountBalance += amount;
-
-              transaction.update(fromAccountRef, {
-                'balance': fromAccountBalance,
-              });
+            if (!fromAccountDoc.exists) {
+              throw Exception("La cuenta de origen no existe");
             }
+
+            fromAccountData = fromAccountDoc.data() as Map<String, dynamic>;
+            // Inicializar fromAccountBalance como no-nulo
+            fromAccountBalance = (fromAccountData['balance'] ?? 0.0).toDouble();
+          }
+
+          // SEGUNDO PASO: PROCESAR LA LÓGICA
+
+          // Calcular nuevo balance para la cuenta principal
+          if (isCreditCard) {
+            if (transactionType == 'expense') {
+              currentBalance = currentBalance - amount; // Revertir un gasto
+            } else {
+              currentBalance = currentBalance + amount; // Revertir un pago
+            }
+          } else {
+            if (transactionType == 'expense') {
+              currentBalance = currentBalance + amount; // Revertir un gasto
+            } else {
+              currentBalance = currentBalance - amount; // Revertir un ingreso
+            }
+          }
+
+          // Calcular nuevo balance para la cuenta de origen si aplica
+          if (fromAccountBalance != null) {
+            // Usar operador null-safe
+            fromAccountBalance =
+                fromAccountBalance +
+                amount; // Devolver el monto a la cuenta de origen
+          }
+
+          // TERCER PASO: TODAS LAS ESCRITURAS
+
+          // 1. Actualizar la transacción
+          transaction.update(transactionRef, {
+            'isInTrash': true,
+            'trashedAt': FieldValue.serverTimestamp(),
+          });
+
+          // 2. Actualizar la cuenta principal
+          transaction.update(accountRef, {'balance': currentBalance});
+
+          // 3. Actualizar la cuenta de origen si aplica
+          if (fromAccountDoc != null && fromAccountBalance != null) {
+            transaction.update(fromAccountDoc.reference, {
+              'balance': fromAccountBalance,
+            });
           }
         });
 
@@ -1058,7 +1116,7 @@ class TransactionService {
         final transactionDoc = await transactionRef.get();
         if (transactionDoc.exists) {
           final transactionData = transactionDoc.data() as Map<String, dynamic>;
-          final categoryId = transactionData['categoryId'];
+          final categoryId = transactionData['categoryId'] ?? '';
 
           // No actualizar presupuestos si es un pago de tarjeta de crédito
           if (categoryId != 'credit_card_payment' &&
@@ -1104,140 +1162,7 @@ class TransactionService {
     }
   }
 
-  // Método para actualizar el estado de papelera de una transacción localmente
-  Future<void> _updateLocalTransactionTrashStatus(
-    String userId,
-    String transactionId,
-    bool isInTrash,
-  ) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = 'cached_transactions_$userId';
-      final cachedJson = prefs.getString(cacheKey);
-
-      if (cachedJson != null && cachedJson.isNotEmpty) {
-        final List<dynamic> rawList = jsonDecode(cachedJson) as List;
-        List<Map<String, dynamic>> transactions = [];
-        bool found = false;
-
-        for (var item in rawList) {
-          Map<String, dynamic> transaction = Map<String, dynamic>.from(item);
-          if (transaction['id'] == transactionId) {
-            transaction['isInTrash'] = isInTrash;
-            found = true;
-          }
-          transactions.add(transaction);
-        }
-
-        if (found) {
-          // Guardar las transacciones actualizadas
-          await prefs.setString(cacheKey, jsonEncode(transactions));
-          print(
-            'Estado de papelera de transacción $transactionId actualizado localmente: $isInTrash',
-          );
-        }
-      }
-    } catch (e) {
-      print('Error al actualizar estado de papelera localmente: $e');
-    }
-  }
-
-  // Restaurar una transacción desde la papelera
-  Future<void> restoreFromTrash(
-    String userId,
-    String transactionId, {
-    bool sync = true,
-  }) async {
-    final isConnected = _connectivityService.isConnected;
-
-    try {
-      final transactionRef = _firestore
-          .collection('transactions')
-          .doc(transactionId);
-
-      if (isConnected) {
-        await _firestore.runTransaction((transaction) async {
-          final transactionDoc = await transaction.get(transactionRef);
-
-          if (!transactionDoc.exists) {
-            throw Exception("La transacción no existe");
-          }
-
-          final transactionData = transactionDoc.data() as Map<String, dynamic>;
-
-          // Solo proceder si está en la papelera
-          if (transactionData['isInTrash'] != true) {
-            return;
-          }
-
-          final accountId = transactionData['accountId'];
-          final accountRef = _firestore
-              .collection('users')
-              .doc(userId)
-              .collection('accounts')
-              .doc(accountId);
-
-          final accountDoc = await transaction.get(accountRef);
-
-          if (!accountDoc.exists) {
-            throw Exception("La cuenta no existe");
-          }
-
-          final accountData = accountDoc.data() as Map<String, dynamic>;
-          double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
-          double amount = (transactionData['amount'] ?? 0.0).toDouble();
-
-          // Ajustar balance según tipo de transacción
-          if (transactionData['type'] == 'expense') {
-            currentBalance -= amount; // Aplicar un gasto
-          } else {
-            currentBalance += amount; // Aplicar un ingreso
-          }
-
-          // Quitar marca de papelera y actualizar el balance
-          transaction.update(transactionRef, {
-            'isInTrash': false,
-            'trashedAt': FieldValue.delete(),
-            'updatedAt': FieldValue.serverTimestamp(),
-          });
-
-          transaction.update(accountRef, {'balance': currentBalance});
-        });
-
-        // Actualizar presupuestos después de restaurar (si es gasto)
-        final transactionDoc = await transactionRef.get();
-        final transactionData = transactionDoc.data() as Map<String, dynamic>;
-
-        if (transactionData['type'] == 'expense') {
-          final amount = (transactionData['amount'] ?? 0.0).toDouble();
-          final categoryId = transactionData['categoryId'];
-          final dateTime = (transactionData['dateTime'] as Timestamp).toDate();
-
-          // Añadir el gasto al presupuesto (isAddition = true)
-          await _budgetService.updateBudgetsForTransaction(
-            userId,
-            amount,
-            categoryId,
-            dateTime,
-            true,
-          );
-        }
-      } else {
-        // Sin conexión, guardar para sincronizar después
-        if (sync) {
-          await _savePendingOperation('restore', userId, transactionId, {});
-        }
-      }
-    } catch (e) {
-      print('Error al restaurar de papelera: $e');
-      // Si ocurre un error, guardar para sincronizar después
-      if (sync) {
-        await _savePendingOperation('restore', userId, transactionId, {});
-      }
-      rethrow;
-    }
-  }
-
+  // Corrección para el método deletePermanently
   Future<void> deletePermanently(
     String userId,
     String transactionId, {
@@ -1253,18 +1178,23 @@ class TransactionService {
       if (isConnected) {
         // Obtener datos de la transacción antes de eliminarla para actualizar presupuestos
         final transactionDoc = await transactionRef.get();
+        if (!transactionDoc.exists) {
+          throw Exception("La transacción no existe");
+        }
+
         final transactionData = transactionDoc.data() as Map<String, dynamic>;
         final isInTrash = transactionData['isInTrash'] == true;
         final isExpense = transactionData['type'] == 'expense';
         final amount = (transactionData['amount'] ?? 0.0).toDouble();
-        final categoryId = transactionData['categoryId'];
+        final categoryId = transactionData['categoryId'] ?? '';
         final dateTime = (transactionData['dateTime'] as Timestamp).toDate();
-
-        // Verificar si es un pago de tarjeta de crédito
         final isCreditCardPayment = categoryId == 'credit_card_payment';
         final fromAccountId = transactionData['fromAccountId'];
 
         await _firestore.runTransaction((transaction) async {
+          // PRIMER PASO: TODAS LAS LECTURAS
+
+          // 1. Leer la transacción (ya la tenemos de antes, pero por claridad la volvemos a leer)
           final transactionDoc = await transaction.get(transactionRef);
 
           if (!transactionDoc.exists) {
@@ -1282,6 +1212,7 @@ class TransactionService {
                 .collection('accounts')
                 .doc(accountId);
 
+            // 2. Leer la cuenta principal
             final accountDoc = await transaction.get(accountRef);
 
             if (!accountDoc.exists) {
@@ -1291,18 +1222,21 @@ class TransactionService {
             final accountData = accountDoc.data() as Map<String, dynamic>;
             double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
             double amount = (transactionData['amount'] ?? 0.0).toDouble();
+            String transactionType = transactionData['type'] ?? 'expense';
+
+            // CALCULAR NUEVO BALANCE
 
             // Ajustar balance según tipo de transacción
-            if (transactionData['type'] == 'expense') {
-              currentBalance += amount; // Revertir un gasto
+            if (transactionType == 'expense') {
+              currentBalance = currentBalance + amount; // Revertir un gasto
             } else {
-              currentBalance -= amount; // Revertir un ingreso
+              currentBalance = currentBalance - amount; // Revertir un ingreso
             }
 
-            // Actualizar el balance
-            transaction.update(accountRef, {'balance': currentBalance});
+            // 3. Leer la cuenta de origen si es un pago de tarjeta
+            DocumentSnapshot? fromAccountDoc;
+            double? fromAccountBalance;
 
-            // Si es un pago de tarjeta de crédito, devolver el monto a la cuenta de origen
             if (isCreditCardPayment && fromAccountId != null) {
               final fromAccountRef = _firestore
                   .collection('users')
@@ -1310,25 +1244,34 @@ class TransactionService {
                   .collection('accounts')
                   .doc(fromAccountId);
 
-              final fromAccountDoc = await transaction.get(fromAccountRef);
+              fromAccountDoc = await transaction.get(fromAccountRef);
 
               if (fromAccountDoc.exists) {
                 final fromAccountData =
                     fromAccountDoc.data() as Map<String, dynamic>;
-                double fromAccountBalance =
+                // Usar una variable no-nula para el cálculo
+                final double currentFromBalance =
                     (fromAccountData['balance'] ?? 0.0).toDouble();
 
-                // Devolver el monto a la cuenta de origen
-                fromAccountBalance += amount;
-
-                transaction.update(fromAccountRef, {
-                  'balance': fromAccountBalance,
-                });
+                // Asignar directamente a una variable potencialmente nula
+                fromAccountBalance = currentFromBalance + amount;
               }
+            }
+
+            // SEGUNDO PASO: TODAS LAS ESCRITURAS
+
+            // 1. Actualizar el balance de la cuenta principal
+            transaction.update(accountRef, {'balance': currentBalance});
+
+            // 2. Actualizar la cuenta de origen si aplica
+            if (fromAccountDoc != null && fromAccountBalance != null) {
+              transaction.update(fromAccountDoc.reference, {
+                'balance': fromAccountBalance,
+              });
             }
           }
 
-          // Eliminar la transacción
+          // 3. Eliminar la transacción
           transaction.delete(transactionRef);
         });
 
@@ -1354,6 +1297,166 @@ class TransactionService {
       // Si ocurre un error, guardar para sincronizar después
       if (sync) {
         await _savePendingOperation('delete', userId, transactionId, {});
+      }
+      rethrow;
+    }
+  }
+
+  Future<void> restoreFromTrash(
+    String userId,
+    String transactionId, {
+    bool sync = true,
+  }) async {
+    final isConnected = _connectivityService.isConnected;
+
+    try {
+      final transactionRef = _firestore
+          .collection('transactions')
+          .doc(transactionId);
+
+      if (isConnected) {
+        await _firestore.runTransaction((transaction) async {
+          // PRIMER PASO: TODAS LAS LECTURAS
+
+          // 1. Leer la transacción
+          final transactionDoc = await transaction.get(transactionRef);
+
+          if (!transactionDoc.exists) {
+            throw Exception("La transacción no existe");
+          }
+
+          final transactionData = transactionDoc.data() as Map<String, dynamic>;
+
+          // Solo proceder si está en la papelera
+          if (transactionData['isInTrash'] != true) {
+            return;
+          }
+
+          final accountId = transactionData['accountId'];
+          final transactionType = transactionData['type'] ?? 'expense';
+          final amount = (transactionData['amount'] ?? 0.0).toDouble();
+          final categoryId = transactionData['categoryId'] ?? '';
+          final isCreditCardPayment = categoryId == 'credit_card_payment';
+          final fromAccountId = transactionData['fromAccountId'];
+
+          // 2. Leer la cuenta principal
+          final accountRef = _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('accounts')
+              .doc(accountId);
+
+          final accountDoc = await transaction.get(accountRef);
+
+          if (!accountDoc.exists) {
+            throw Exception("La cuenta no existe");
+          }
+
+          final accountData = accountDoc.data() as Map<String, dynamic>;
+          double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
+          final isCreditCard = accountData['isCreditCard'] ?? false;
+
+          // 3. Leer la cuenta de origen si es un pago de tarjeta
+          DocumentSnapshot? fromAccountDoc;
+          double? fromAccountBalance;
+
+          if (isCreditCardPayment && fromAccountId != null) {
+            final fromAccountRef = _firestore
+                .collection('users')
+                .doc(userId)
+                .collection('accounts')
+                .doc(fromAccountId);
+
+            fromAccountDoc = await transaction.get(fromAccountRef);
+
+            if (fromAccountDoc.exists) {
+              final fromAccountData =
+                  fromAccountDoc.data() as Map<String, dynamic>;
+              // Asegurar que no sea nulo usando un valor predeterminado
+              final double currentFromBalance =
+                  (fromAccountData['balance'] ?? 0.0).toDouble();
+              // Asignar a variable potencialmente nula
+              fromAccountBalance = currentFromBalance;
+            }
+          }
+
+          // SEGUNDO PASO: CALCULAR NUEVOS BALANCES
+
+          // Ajustar balance según tipo de cuenta y transacción
+          if (isCreditCard) {
+            if (transactionType == 'expense') {
+              currentBalance = currentBalance + amount; // Restaurar el gasto
+            } else {
+              currentBalance = currentBalance - amount; // Restaurar el pago
+            }
+          } else {
+            // Comportamiento normal para cuentas regulares
+            if (transactionType == 'expense') {
+              currentBalance = currentBalance - amount; // Aplicar un gasto
+            } else {
+              currentBalance = currentBalance + amount; // Aplicar un ingreso
+            }
+          }
+
+          // Si es un pago de tarjeta, reducir balance de la cuenta de origen
+          if (fromAccountBalance != null) {
+            // Usar operador seguro para valores null
+            fromAccountBalance = fromAccountBalance - amount;
+          }
+
+          // TERCER PASO: TODAS LAS ESCRITURAS
+
+          // 1. Actualizar la transacción
+          transaction.update(transactionRef, {
+            'isInTrash': false,
+            'trashedAt': FieldValue.delete(),
+            'updatedAt': FieldValue.serverTimestamp(),
+          });
+
+          // 2. Actualizar balance de la cuenta principal
+          transaction.update(accountRef, {'balance': currentBalance});
+
+          // 3. Actualizar balance de la cuenta de origen si aplica
+          if (fromAccountDoc != null && fromAccountBalance != null) {
+            transaction.update(fromAccountDoc.reference, {
+              'balance': fromAccountBalance,
+            });
+          }
+        });
+
+        // Actualizar presupuestos después de restaurar (si es gasto)
+        final transactionDoc = await transactionRef.get();
+        if (transactionDoc.exists) {
+          final transactionData = transactionDoc.data() as Map<String, dynamic>;
+          final categoryId = transactionData['categoryId'] ?? '';
+
+          if (transactionData['type'] == 'expense' &&
+              categoryId != 'credit_card_payment') {
+            final amount = (transactionData['amount'] ?? 0.0).toDouble();
+            final dateTime =
+                (transactionData['dateTime'] as Timestamp).toDate();
+
+            // Añadir el gasto al presupuesto (isAddition = true)
+            await _budgetService.updateBudgetsForTransaction(
+              userId,
+              amount,
+              categoryId,
+              dateTime,
+              true,
+            );
+          }
+        }
+      } else {
+        // Sin conexión, guardar para sincronizar después
+        if (sync) {
+          await _savePendingOperation('restore', userId, transactionId, {});
+        }
+      }
+    } catch (e) {
+      print('Error al restaurar de papelera: $e');
+      // Si ocurre un error, guardar para sincronizar después
+      if (sync) {
+        await _savePendingOperation('restore', userId, transactionId, {});
       }
       rethrow;
     }

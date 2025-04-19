@@ -813,6 +813,8 @@ class CreditCardSummaryScreen extends StatelessWidget {
       try {
         await FirebaseFirestore.instance
             .runTransaction((transaction) async {
+              // PRIMER PASO: TODAS LAS LECTURAS
+
               // Referencias a las cuentas
               final creditCardRef = FirebaseFirestore.instance
                   .collection('users')
@@ -836,11 +838,16 @@ class CreditCardSummaryScreen extends StatelessWidget {
                 throw Exception("Una de las cuentas no existe");
               }
 
-              // Obtener balances actuales
+              // SEGUNDO PASO: CALCULAR NUEVOS BALANCES
+
+              // Obtener balances actuales (asegurando que no sean nulos)
+              final creditCardData = creditCardDoc.data()!;
+              final paymentAccountData = paymentAccountDoc.data()!;
+
               double creditCardBalance =
-                  (creditCardDoc.data()!['balance'] ?? 0.0).toDouble();
+                  (creditCardData['balance'] ?? 0.0).toDouble();
               double paymentAccountBalance =
-                  (paymentAccountDoc.data()!['balance'] ?? 0.0).toDouble();
+                  (paymentAccountData['balance'] ?? 0.0).toDouble();
 
               // Validaciones adicionales
               if (creditCardBalance < amount) {
@@ -853,9 +860,9 @@ class CreditCardSummaryScreen extends StatelessWidget {
                 throw Exception("Saldo insuficiente en la cuenta de pago");
               }
 
-              // Actualizar balances
-              creditCardBalance -= amount;
-              paymentAccountBalance -= amount;
+              // Actualizar balances - usando asignación directa, no += o -=
+              creditCardBalance = creditCardBalance - amount;
+              paymentAccountBalance = paymentAccountBalance - amount;
 
               // Verificar que los balances no sean negativos
               if (creditCardBalance < 0) {
@@ -885,6 +892,8 @@ class CreditCardSummaryScreen extends StatelessWidget {
                 'createdAt': FieldValue.serverTimestamp(),
                 'updatedAt': FieldValue.serverTimestamp(),
               };
+
+              // TERCER PASO: TODAS LAS ESCRITURAS
 
               // Actualizar cuentas
               transaction.update(creditCardRef, {'balance': creditCardBalance});
