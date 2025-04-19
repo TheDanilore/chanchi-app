@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:chanchi_app/features/home/presentation/widgets/transaction_filter_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:chanchi_app/core/config/theme.dart';
@@ -49,6 +50,13 @@ class _TransactionListState extends State<TransactionList> {
   bool _processingAction = false;
   bool _isLoading = true;
   List<Map<String, dynamic>> _transactions = [];
+  List<Map<String, dynamic>> _filteredTransactions = [];
+  
+  // Filtros actuales
+  String? _selectedCategoryId;
+  String? _selectedAccountId;
+  DateTime? _startDate;
+  DateTime? _endDate;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
   final ConnectivityService _connectivityService = ConnectivityService();
@@ -57,6 +65,13 @@ class _TransactionListState extends State<TransactionList> {
   void initState() {
     super.initState();
     _service = TransactionListService(userId: widget.userId);
+    
+    // Inicializar filtros desde los props del widget
+    _selectedCategoryId = widget.selectedCategoryId;
+    _selectedAccountId = widget.selectedAccountId;
+    _startDate = widget.startDate;
+    _endDate = widget.endDate;
+    
     _loadData();
 
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
@@ -64,6 +79,31 @@ class _TransactionListState extends State<TransactionList> {
     ) {
       _loadTransactions();
     });
+  }
+
+  @override
+  void didUpdateWidget(TransactionList oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    
+    // Si cambia el mes seleccionado, volver a cargar los datos
+    if (oldWidget.selectedMonth.month != widget.selectedMonth.month ||
+        oldWidget.selectedMonth.year != widget.selectedMonth.year) {
+      _loadTransactions();
+    }
+    
+    // Actualizar filtros si vienen nuevos desde widget
+    if (oldWidget.selectedCategoryId != widget.selectedCategoryId ||
+        oldWidget.selectedAccountId != widget.selectedAccountId ||
+        oldWidget.startDate != widget.startDate ||
+        oldWidget.endDate != widget.endDate) {
+      setState(() {
+        _selectedCategoryId = widget.selectedCategoryId;
+        _selectedAccountId = widget.selectedAccountId;
+        _startDate = widget.startDate;
+        _endDate = widget.endDate;
+      });
+      _applyFilters();
+    }
   }
 
   @override
@@ -88,6 +128,9 @@ class _TransactionListState extends State<TransactionList> {
           _accountsCache = accounts;
           _isLoading = false;
         });
+        
+        // Aplicar filtros iniciales
+        _applyFilters();
       }
     } catch (e) {
       print('Error al cargar datos: $e');
@@ -107,10 +150,10 @@ class _TransactionListState extends State<TransactionList> {
         'TRANSACTION LIST: Cargando transacciones - Mes: ${widget.selectedMonth}',
       );
       print(
-        'TRANSACTION LIST: Filtros - Cuenta: ${widget.selectedAccountId}, Categoría: ${widget.selectedCategoryId}',
+        'TRANSACTION LIST: Filtros - Cuenta: $_selectedAccountId, Categoría: $_selectedCategoryId',
       );
       print(
-        'TRANSACTION LIST: Rango de fechas: ${widget.startDate} - ${widget.endDate}',
+        'TRANSACTION LIST: Rango de fechas: $_startDate - $_endDate',
       );
 
       final transactions = await _service.getTransactions(
@@ -127,6 +170,9 @@ class _TransactionListState extends State<TransactionList> {
         setState(() {
           _transactions = transactions;
         });
+        
+        // Aplicar filtros a las nuevas transacciones
+        _applyFilters();
       }
 
       widget.onRefresh?.call();
@@ -135,6 +181,71 @@ class _TransactionListState extends State<TransactionList> {
       widget.onError?.call('Error al cargar transacciones: $e');
     }
   }
+  
+  void _applyFilters() {
+    if (!mounted) return;
+    
+    setState(() {
+      _filteredTransactions = _transactions.where((transaction) {
+        // Filtro por categoría
+        if (_selectedCategoryId != null && 
+            transaction['categoryId'] != _selectedCategoryId) {
+          return false;
+        }
+        
+        // Filtro por cuenta
+        if (_selectedAccountId != null && 
+            transaction['accountId'] != _selectedAccountId) {
+          return false;
+        }
+        
+        // Filtro por rango de fechas
+        if (_startDate != null && _endDate != null) {
+          final transactionDate = (transaction['dateTime'] as Timestamp).toDate();
+          if (transactionDate.isBefore(_startDate!) || 
+              transactionDate.isAfter(_endDate!)) {
+            return false;
+          }
+        }
+        
+        return true;
+      }).toList();
+    });
+  }
+  
+  void _onCategorySelected(String? categoryId) {
+    setState(() {
+      _selectedCategoryId = categoryId;
+    });
+    _applyFilters();
+  }
+  
+  void _onAccountSelected(String? accountId) {
+    setState(() {
+      _selectedAccountId = accountId;
+    });
+    _applyFilters();
+  }
+  
+  void _onDateRangeSelected(DateTime? startDate, DateTime? endDate) {
+    setState(() {
+      _startDate = startDate;
+      _endDate = endDate;
+    });
+    _applyFilters();
+  }
+  
+  void _onClearFilters() {
+    setState(() {
+      _selectedCategoryId = null;
+      _selectedAccountId = null;
+      _startDate = null;
+      _endDate = null;
+    });
+    _applyFilters();
+    
+    widget.onClearFilters?.call();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -142,18 +253,49 @@ class _TransactionListState extends State<TransactionList> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    if (_transactions.isEmpty) {
-      return EmptyStateWidget(
-        isFiltered:
-            widget.startDate != null ||
-            widget.endDate != null ||
-            widget.selectedCategoryId != null ||
-            widget.selectedAccountId != null,
-        onClearFilters: widget.onClearFilters,
-      );
-    }
-
-    final groupedTransactions = _groupTransactionsByDay(_transactions);
+    return Column(
+      children: [
+        // Componente de filtros
+        Padding(
+          padding: const EdgeInsets.fromLTRB(
+            AppTheme.spacingL, 
+            0, 
+            AppTheme.spacingL, 
+            AppTheme.spacingM
+          ),
+          child: TransactionFilterWidget(
+            userId: widget.userId,
+            onCategorySelected: _onCategorySelected,
+            onAccountSelected: _onAccountSelected,
+            onDateRangeSelected: _onDateRangeSelected,
+            onClearFilters: _onClearFilters,
+            selectedCategoryId: _selectedCategoryId,
+            selectedAccountId: _selectedAccountId,
+            startDate: _startDate,
+            endDate: _endDate,
+            selectedMonth: widget.selectedMonth,
+            categoriesCache: _categoriesCache,
+            accountsCache: _accountsCache,
+          ),
+        ),
+        
+        // Lista de transacciones
+        Expanded(
+          child: _filteredTransactions.isEmpty 
+              ? EmptyStateWidget(
+                  isFiltered: _selectedCategoryId != null || 
+                              _selectedAccountId != null || 
+                              _startDate != null,
+                  onClearFilters: _onClearFilters,
+                )
+              : _buildTransactionList(),
+        ),
+      ],
+    );
+  }
+  
+  Widget _buildTransactionList() {
+    final groupedTransactions = _groupTransactionsByDay(_filteredTransactions);
 
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppTheme.spacingL),
@@ -238,13 +380,12 @@ class _TransactionListState extends State<TransactionList> {
 
     try {
       print('TransactionList: Moviendo a papelera: $docId');
-      print('Transacciones antes de eliminar: ${_transactions.length}');
-
+      
+      // Remover de la lista filtrada
       setState(() {
+        _filteredTransactions.removeWhere((t) => t['id'] == docId);
         _transactions.removeWhere((t) => t['id'] == docId);
       });
-
-      print('Transacciones después de eliminar: ${_transactions.length}');
 
       await _service.moveToTrash(docId, context, refreshUI: false);
       await _loadTransactions();

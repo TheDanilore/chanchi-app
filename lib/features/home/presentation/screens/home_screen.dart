@@ -577,6 +577,7 @@ class _HomeScreenState extends State<HomeScreen>
             children: [
               CustomScrollView(
                 slivers: [
+                  // Indicador de modo sin conexión
                   if (_isOffline && _pendingOperationsCount > 0)
                     SliverToBoxAdapter(
                       child: OfflineIndicatorWidget(
@@ -586,6 +587,8 @@ class _HomeScreenState extends State<HomeScreen>
                         onSyncPressed: _syncData,
                       ),
                     ),
+
+                  // Selector de mes
                   SliverToBoxAdapter(
                     child: MonthSelectorWidget(
                       selectedMonth: _selectedMonth,
@@ -605,102 +608,101 @@ class _HomeScreenState extends State<HomeScreen>
                       ),
                     ),
                   ),
-                  SliverPadding(
-                    padding: const EdgeInsets.all(AppTheme.spacingL),
-                    sliver: SliverList(
-                      delegate: SliverChildListDelegate([
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Text(
-                              "Resumen Financiero",
-                              style: Theme.of(context).textTheme.titleMedium
-                                  ?.copyWith(fontWeight: FontWeight.bold),
-                            ),
-                            IconButton(
-                              icon: Icon(
-                                _showFinancialSummary
-                                    ? Icons.keyboard_arrow_up
-                                    : Icons.keyboard_arrow_down,
-                                color: AppTheme.textSecondaryColor,
+
+                  // Resumen Financiero
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.all(AppTheme.spacingL),
+                      child: Column(
+                        children: [
+                          // Cabecera de Resumen Financiero
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Resumen Financiero",
+                                style: Theme.of(context).textTheme.titleMedium
+                                    ?.copyWith(fontWeight: FontWeight.bold),
                               ),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              onPressed: () {
-                                setState(() {
-                                  _showFinancialSummary =
-                                      !_showFinancialSummary;
-                                });
+                              IconButton(
+                                icon: Icon(
+                                  _showFinancialSummary
+                                      ? Icons.keyboard_arrow_up
+                                      : Icons.keyboard_arrow_down,
+                                  color: AppTheme.textSecondaryColor,
+                                ),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                onPressed: () {
+                                  setState(() {
+                                    _showFinancialSummary =
+                                        !_showFinancialSummary;
+                                  });
+                                },
+                              ),
+                            ],
+                          ),
+
+                          const SizedBox(height: AppTheme.spacingS),
+
+                          // Widget de resumen financiero
+                          AnimatedCrossFade(
+                            duration: const Duration(milliseconds: 300),
+                            crossFadeState:
+                                _showFinancialSummary
+                                    ? CrossFadeState.showFirst
+                                    : CrossFadeState.showSecond,
+                            firstChild: FinancialSummaryDashboard(
+                              userId: userId,
+                              selectedMonth: _selectedMonth,
+                              onNavigateToTab: (index) {
+                                setState(() => _selectedIndex = index);
                               },
                             ),
-                          ],
-                        ),
-                        const SizedBox(height: AppTheme.spacingS),
-                        AnimatedCrossFade(
-                          duration: const Duration(milliseconds: 300),
-                          crossFadeState:
-                              _showFinancialSummary
-                                  ? CrossFadeState.showFirst
-                                  : CrossFadeState.showSecond,
-                          firstChild: FinancialSummaryDashboard(
-                            userId: userId,
-                            selectedMonth: _selectedMonth,
-                            onNavigateToTab: (index) {
-                              setState(() => _selectedIndex = index);
-                            },
+                            secondChild: const SizedBox(height: 0),
                           ),
-                          secondChild: const SizedBox(height: 0),
-                        ),
-                        const SizedBox(height: AppTheme.spacingL),
-                        if (_showFinancialSummary)
-                          BudgetDashboardWidget(userId: userId),
-                        const SizedBox(height: AppTheme.spacingL),
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Row(
-                              children: [
-                                Text(
-                                  "Movimientos",
-                                  style: Theme.of(
-                                    context,
-                                  ).textTheme.titleMedium?.copyWith(
-                                    color: AppTheme.textPrimaryColor,
-                                    fontWeight: FontWeight.bold,
-                                  ),
+
+                          const SizedBox(height: AppTheme.spacingL),
+
+                          // Widget de presupuestos
+                          if (_showFinancialSummary)
+                            BudgetDashboardWidget(userId: userId),
+
+                          const SizedBox(height: AppTheme.spacingL),
+
+                          // Cabecera de Movimientos
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                "Movimientos",
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.titleMedium?.copyWith(
+                                  color: AppTheme.textPrimaryColor,
+                                  fontWeight: FontWeight.bold,
                                 ),
-                                const SizedBox(width: 8),
-                                if (_startDate != null)
-                                  GestureDetector(
-                                    onTap: () {
-                                      setState(() {
-                                        _startDate = null;
-                                        _endDate = null;
-                                      });
-                                    },
-                                    child: Icon(
-                                      Icons.filter_list_off,
-                                      size: 18,
-                                      color: AppTheme.primaryColor,
-                                    ),
-                                  ),
-                              ],
-                            ),
-                            Text(
-                              DateFormat('dd MMM yyyy').format(DateTime.now()),
-                              style: Theme.of(
-                                context,
-                              ).textTheme.bodyMedium?.copyWith(
-                                color: AppTheme.textSecondaryColor,
                               ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: AppTheme.spacingS),
-                      ]),
+                              Text(
+                                DateFormat(
+                                  'dd MMM yyyy',
+                                ).format(DateTime.now()),
+                                style: Theme.of(
+                                  context,
+                                ).textTheme.bodyMedium?.copyWith(
+                                  color: AppTheme.textSecondaryColor,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
                     ),
                   ),
+
+                  // Lista de transacciones
                   SliverFillRemaining(
+                    hasScrollBody: true,
                     child: TransactionList(
                       userId: userId,
                       onEditTransaction: _editTransaction,
@@ -734,6 +736,8 @@ class _HomeScreenState extends State<HomeScreen>
                   ),
                 ],
               ),
+
+              // Indicador de sincronización
               if (_isSyncing)
                 Positioned(
                   bottom: 16,
