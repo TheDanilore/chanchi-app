@@ -1,13 +1,13 @@
 import 'package:chanchi_app/presentation/pages/forgot_password_screen.dart';
-import 'package:chanchi_app/presentation/pages/home/home_screen.dart';
+import 'package:chanchi_app/features/home/presentation/screens/home_screen.dart';
 import 'package:chanchi_app/presentation/pages/register_screen.dart';
-import 'package:chanchi_app/presentation/widgets/custom_button.dart';
-import 'package:chanchi_app/presentation/widgets/custom_text_field.dart';
+import 'package:chanchi_app/core/widgets/custom_button.dart';
+import 'package:chanchi_app/core/widgets/custom_text_field.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:google_sign_in/google_sign_in.dart';
-import 'package:chanchi_app/config/theme.dart';
+import 'package:chanchi_app/core/config/theme.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});

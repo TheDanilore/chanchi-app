@@ -1,6 +1,6 @@
 import 'dart:io';
 
-import 'package:chanchi_app/config/theme.dart';
+import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/presentation/pages/auth_check.dart';
 import 'package:chanchi_app/services/notification_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';

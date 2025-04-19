@@ -1,5 +1,5 @@
-import 'package:chanchi_app/config/theme.dart';
-import 'package:chanchi_app/config/theme_manager.dart';
+import 'package:chanchi_app/core/config/theme.dart';
+import 'package:chanchi_app/core/config/theme_manager.dart';
 import 'package:chanchi_app/presentation/pages/splash_screen.dart';
 import 'package:chanchi_app/services/notification_service.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';

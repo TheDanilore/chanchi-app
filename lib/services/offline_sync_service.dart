@@ -1,7 +1,7 @@
 import 'dart:convert';
 
 import 'package:chanchi_app/services/connectivity_service.dart';
-import 'package:chanchi_app/services/transaction_service.dart';
+import 'package:chanchi_app/features/transactions/domain/services/transaction_service.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

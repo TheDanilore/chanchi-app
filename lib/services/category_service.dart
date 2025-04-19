@@ -1,5 +1,5 @@
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:chanchi_app/models/category.dart';
+import 'package:chanchi_app/data/models/category.dart';
 
 class CategoryService {
   final FirebaseFirestore _firestore;

@@ -1,7 +1,7 @@
-import 'package:chanchi_app/config/theme.dart';
-import 'package:chanchi_app/presentation/pages/add_transaction_screen.dart';
-import 'package:chanchi_app/presentation/widgets/trash_transaction_card.dart';
-import 'package:chanchi_app/services/transaction_list_service.dart';
+import 'package:chanchi_app/core/config/theme.dart';
+import 'package:chanchi_app/features/transactions/presentation/screens/add_transaction_screen.dart';
+import 'package:chanchi_app/features/home/presentation/widgets/trash_transaction_card.dart';
+import 'package:chanchi_app/features/home/domain/services/transaction_list_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 

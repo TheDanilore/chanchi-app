@@ -1,4 +1,4 @@
-import 'package:chanchi_app/presentation/pages/home/home_screen.dart';
+import 'package:chanchi_app/features/home/presentation/screens/home_screen.dart';
 import 'package:chanchi_app/presentation/pages/login_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';

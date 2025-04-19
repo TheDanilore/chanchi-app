@@ -1,4 +1,4 @@
-import 'package:chanchi_app/models/budget.dart';
+import 'package:chanchi_app/data/models/budget.dart';
 import 'package:chanchi_app/services/notification_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
