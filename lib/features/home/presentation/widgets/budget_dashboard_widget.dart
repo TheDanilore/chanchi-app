@@ -14,10 +14,10 @@ class BudgetDashboardWidget extends StatefulWidget {
     : super(key: key);
 
   @override
-  _BudgetDashboardWidgetState createState() => _BudgetDashboardWidgetState();
+  State<BudgetDashboardWidget> createState() => BudgetDashboardWidgetState();
 }
 
-class _BudgetDashboardWidgetState extends State<BudgetDashboardWidget> {
+class BudgetDashboardWidgetState extends State<BudgetDashboardWidget> {
   final BudgetService _budgetService = BudgetService();
   final CategoryService _categoryService = CategoryService();
   List<Budget> _budgets = [];
@@ -86,6 +86,12 @@ class _BudgetDashboardWidgetState extends State<BudgetDashboardWidget> {
         print('Error al cargar datos de presupuesto: $e');
       }
     }
+  }
+
+
+// Método de actualización
+  Future<void> refresh() async {
+    await _loadData();
   }
 
   @override

@@ -28,6 +28,9 @@ class HomeProvider extends ChangeNotifier {
   // Suscripciones
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
 
+  // Variable para controlar si el provider está activo
+  bool _isActive = true;
+
   // Getters
   int get selectedIndex => _selectedIndex;
   bool get showFilterOptions => _showFilterOptions;
@@ -37,7 +40,6 @@ class HomeProvider extends ChangeNotifier {
   int get pendingOperationsCount => _pendingOperationsCount;
   String get userId => _auth.currentUser?.uid ?? '';
   DateTime get selectedMonth => _selectedMonth;
-  bool _isActive = true;
 
   // Inicialización
   void initialize() {
@@ -58,10 +60,17 @@ class HomeProvider extends ChangeNotifier {
     super.dispose();
   }
 
+  // Método de ayuda para verificar si es seguro llamar a notifyListeners
+  void _safeNotifyListeners() {
+    if (_isActive) {
+      notifyListeners();
+    }
+  }
+
   // Métodos
   void onItemTapped(int index) {
     _selectedIndex = index;
-    notifyListeners();
+    _safeNotifyListeners();
 
     if (index == 0) {
       loadTransactions();
@@ -70,12 +79,12 @@ class HomeProvider extends ChangeNotifier {
 
   void toggleFilterOptions() {
     _showFilterOptions = !_showFilterOptions;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void toggleFinancialSummary() {
     _showFinancialSummary = !_showFinancialSummary;
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   Future<void> _updatePendingOperationsCount() async {
@@ -84,7 +93,7 @@ class HomeProvider extends ChangeNotifier {
         _auth.currentUser!.uid,
       );
       _pendingOperationsCount = count;
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 
@@ -94,7 +103,7 @@ class HomeProvider extends ChangeNotifier {
     _isOffline = !isConnected;
 
     if (!_isActive) return; // Verificar si el proveedor aún está activo
-    notifyListeners();
+    _safeNotifyListeners();
 
     if (wasOffline && !_isOffline && _auth.currentUser != null) {
       await syncData();
@@ -102,10 +111,10 @@ class HomeProvider extends ChangeNotifier {
   }
 
   Future<void> syncData() async {
-    if (_isSyncing) return;
+    if (_isSyncing || !_isActive) return;
 
     _isSyncing = true;
-    notifyListeners();
+    _safeNotifyListeners();
 
     try {
       final success = await _homeService.attemptSync();
@@ -115,26 +124,32 @@ class HomeProvider extends ChangeNotifier {
       ErrorHandler.logError('Error al sincronizar', e);
     } finally {
       _isSyncing = false;
-      notifyListeners();
+      _safeNotifyListeners();
     }
   }
 
   Future<void> loadTransactions() async {
-    notifyListeners();
+    if (!_isActive) return;
+    
+    _safeNotifyListeners();
     await _updatePendingOperationsCount();
   }
 
   Future<void> refreshData() async {
+    if (!_isActive) return;
+    
     await loadTransactions();
 
     if (_isOffline && _pendingOperationsCount > 0) {
       await syncData();
     }
 
-    notifyListeners();
+    _safeNotifyListeners();
   }
 
   void changeMonth(DateTime newMonth) {
+    if (!_isActive) return;
+    
     _selectedMonth = DateTime(newMonth.year, newMonth.month, 1);
     _startDate = DateTime(
       _selectedMonth.year,
@@ -154,7 +169,7 @@ class HomeProvider extends ChangeNotifier {
       999,
     ).subtract(const Duration(milliseconds: 1));
 
-    notifyListeners();
+    _safeNotifyListeners();
     loadTransactions();
   }
 

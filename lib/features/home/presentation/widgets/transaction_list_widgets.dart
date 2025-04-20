@@ -40,10 +40,10 @@ class TransactionList extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _TransactionListState createState() => _TransactionListState();
+  State<TransactionList> createState() => TransactionListState();
 }
 
-class _TransactionListState extends State<TransactionList> {
+class TransactionListState extends State<TransactionList> {
   late TransactionListService _service;
   Map<String, Category> _categoriesCache = {};
   Map<String, Account> _accountsCache = {};
@@ -79,6 +79,11 @@ class _TransactionListState extends State<TransactionList> {
     ) {
       _loadTransactions();
     });
+  }
+
+  // Método para exponer la función de carga de datos a otros widgets
+  Future<void> loadData() async {
+    await _loadTransactions();
   }
 
   @override

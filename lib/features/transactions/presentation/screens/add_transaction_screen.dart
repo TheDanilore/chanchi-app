@@ -607,8 +607,16 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                                 if (value == null || value.isEmpty) {
                                   return 'Ingresa un monto';
                                 }
-                                if (double.tryParse(value) == null) {
+                                final amount = double.tryParse(value);
+                                if (amount == null) {
                                   return 'Monto inválido';
+                                }
+                                if (amount <= 0) {
+                                  return 'El monto debe ser mayor a 0';
+                                }
+                                if (amount > 1000000) {
+                                  // Ejemplo de límite máximo
+                                  return 'Monto demasiado alto';
                                 }
                                 return null;
                               },

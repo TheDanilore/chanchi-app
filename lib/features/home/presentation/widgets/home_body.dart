@@ -20,6 +20,7 @@ class HomeBody extends StatefulWidget {
   final Function(DateTime) onMonthChanged;
   final Function() onRefresh;
   final Function() onSyncPressed;
+  final VoidCallback? onTransferRequested;
 
   const HomeBody({
     Key? key,
@@ -32,6 +33,7 @@ class HomeBody extends StatefulWidget {
     required this.onMonthChanged,
     required this.onRefresh,
     required this.onSyncPressed,
+    this.onTransferRequested,
   }) : super(key: key);
 
   @override
@@ -44,6 +46,19 @@ class _HomeBodyState extends State<HomeBody> {
   String? _selectedAccountId;
   DateTime? _startDate;
   DateTime? _endDate;
+  bool _isRefreshing = false;
+
+  // Clave para el RefreshIndicator
+  final GlobalKey<RefreshIndicatorState> _refreshIndicatorKey =
+      GlobalKey<RefreshIndicatorState>();
+
+  // Referencias para actualizar los widgets hijos
+  final GlobalKey<FinancialSummaryDashboardState> _financialSummaryKey =
+      GlobalKey<FinancialSummaryDashboardState>();
+  final GlobalKey<BudgetDashboardWidgetState> _budgetDashboardKey =
+      GlobalKey<BudgetDashboardWidgetState>();
+  final GlobalKey<TransactionListState> _transactionListKey =
+      GlobalKey<TransactionListState>();
 
   @override
   void initState() {
@@ -116,7 +131,7 @@ class _HomeBodyState extends State<HomeBody> {
       );
 
       // Refrescar los datos después de volver de la edición
-      await widget.onRefresh();
+      _refreshData();
     } catch (e) {
       print('Error al editar transacción: $e');
       ScaffoldMessenger.of(context).showSnackBar(
@@ -125,6 +140,50 @@ class _HomeBodyState extends State<HomeBody> {
           backgroundColor: Colors.red,
         ),
       );
+    }
+  }
+
+  // Método para actualizar todos los componentes
+  Future<void> _refreshData() async {
+    if (_isRefreshing) return;
+
+    setState(() {
+      _isRefreshing = true;
+    });
+
+    try {
+      // Llamar al método de actualización del padre
+      await widget.onRefresh();
+
+      // Actualizar cada componente individualmente usando sus keys
+      if (_financialSummaryKey.currentState != null) {
+        await _financialSummaryKey.currentState!.refresh();
+      }
+
+      if (_budgetDashboardKey.currentState != null) {
+        await _budgetDashboardKey.currentState!.refresh();
+      }
+
+      if (_transactionListKey.currentState != null) {
+        await _transactionListKey.currentState!.loadData();
+      }
+    } catch (e) {
+      print('Error al refrescar datos: $e');
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error al actualizar: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isRefreshing = false;
+        });
+      }
     }
   }
 
@@ -138,10 +197,9 @@ class _HomeBodyState extends State<HomeBody> {
 
   Widget _buildGeneralTab() {
     return RefreshIndicator(
+      key: _refreshIndicatorKey,
       color: AppTheme.primaryColor,
-      onRefresh: () async {
-        await widget.onRefresh();
-      },
+      onRefresh: _refreshData,
       child: Stack(
         children: [
           CustomScrollView(
@@ -202,6 +260,7 @@ class _HomeBodyState extends State<HomeBody> {
               SliverFillRemaining(
                 hasScrollBody: true,
                 child: TransactionList(
+                  key: _transactionListKey,
                   userId: widget.userId,
                   onEditTransaction: _editTransaction,
                   selectedCategoryId: _selectedCategoryId,
@@ -218,9 +277,7 @@ class _HomeBodyState extends State<HomeBody> {
                     );
                   },
                   onClearFilters: _clearFilters,
-                  onRefresh: () {
-                    widget.onRefresh();
-                  },
+                  onRefresh: _refreshData,
                 ),
               ),
             ],
@@ -318,6 +375,7 @@ class _HomeBodyState extends State<HomeBody> {
           firstChild: Padding(
             padding: const EdgeInsets.only(top: 2.0),
             child: FinancialSummaryDashboard(
+              key: _financialSummaryKey,
               userId: widget.userId,
               selectedMonth: widget.selectedMonth,
               onNavigateToTab: (index) {
@@ -332,7 +390,10 @@ class _HomeBodyState extends State<HomeBody> {
         if (_showFinancialSummary)
           Padding(
             padding: const EdgeInsets.only(top: 10.0),
-            child: BudgetDashboardWidget(userId: widget.userId),
+            child: BudgetDashboardWidget(
+              key: _budgetDashboardKey,
+              userId: widget.userId,
+            ),
           ),
 
         // Cabecera de Movimientos

@@ -156,6 +156,18 @@ class NotificationService {
     }
   }
 
+  // Implementar el método que falta
+  // Versión mejorada
+  void checkPermissions() {
+    // Verificar todos los permisos necesarios
+    checkAllNotificationPermissions().then((hasPermissions) {
+      if (!hasPermissions) {
+        print('No se tienen todos los permisos necesarios para notificaciones');
+        // Opcionalmente, aquí podrías mostrar un mensaje al usuario
+      }
+    });
+  }
+
   // RESTO DEL CÓDIGO SIMPLIFICADO PARA MAYOR LEGIBILIDAD
   Future<void> _setupMessageHandlers() async {
     await _fcm.getToken().then((token) {
@@ -436,7 +448,9 @@ class NotificationService {
   // Método para cancelar la notificación diaria
   Future<void> cancelDailyReminder() async {
     try {
-      await flutterLocalNotificationsPlugin.cancel(1); // Usar el mismo ID específico
+      await flutterLocalNotificationsPlugin.cancel(
+        1,
+      ); // Usar el mismo ID específico
 
       // Guardar estado de recordatorio
       final prefs = await SharedPreferences.getInstance();

@@ -1,7 +1,9 @@
 // lib/features/home/presentation/screens/home_screen.dart
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/features/accounts/presentation/screens/accounts_screen.dart';
+import 'package:chanchi_app/features/transactions/domain/services/transaction_service.dart';
 import 'package:chanchi_app/features/transactions/presentation/screens/add_transaction_screen.dart';
+import 'package:chanchi_app/features/transactions/presentation/screens/transfer_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:chanchi_app/features/home/presentation/providers/home_provider.dart';
 import 'package:chanchi_app/features/home/presentation/widgets/home_app_bar.dart';
@@ -30,12 +32,12 @@ class HomeScreenContent extends StatefulWidget {
 class _HomeScreenContentState extends State<HomeScreenContent>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  
+
   @override
   void initState() {
     super.initState();
     _tabController = TabController(length: 2, vsync: this);
-    
+
     // Inicializar datos
     final provider = Provider.of<HomeProvider>(context, listen: false);
     provider.initialize();
@@ -50,7 +52,7 @@ class _HomeScreenContentState extends State<HomeScreenContent>
   @override
   Widget build(BuildContext context) {
     final provider = Provider.of<HomeProvider>(context);
-    
+
     return WillPopScope(
       onWillPop: () async {
         if (provider.selectedIndex == 0) {
@@ -72,7 +74,8 @@ class _HomeScreenContentState extends State<HomeScreenContent>
       ),
     );
   }
-  
+
+  // In HomeScreenContent class
   Widget _buildBody(HomeProvider provider) {
     final List<Widget> pages = [
       HomeBody(
@@ -85,14 +88,37 @@ class _HomeScreenContentState extends State<HomeScreenContent>
         onMonthChanged: provider.changeMonth,
         onRefresh: provider.refreshData,
         onSyncPressed: provider.syncData,
+        onTransferRequested: () async {
+          // Load accounts first
+          final transactionService = TransactionService();
+          final accounts = await transactionService.loadAccounts(
+            provider.userId,
+          );
+
+          // Show transfer screen
+          final result = await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder:
+                  (_) => TransferScreen(
+                    userId: provider.userId,
+                    accounts: accounts,
+                  ),
+            ),
+          );
+
+          // Optional: Handle result if needed
+          if (result == true) {
+            provider.refreshData();
+          }
+        },
       ),
       AddTransactionScreen(userId: provider.userId, hideAppBar: true),
       AccountsScreen(userId: provider.userId),
     ];
-    
+
     return pages[provider.selectedIndex];
   }
-  
+
   Widget _buildBottomNavigationBar(HomeProvider provider) {
     return BottomNavigationBar(
       items: const [

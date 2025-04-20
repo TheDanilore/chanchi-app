@@ -42,6 +42,85 @@ class TransactionService {
     );
   }
 
+  Future<void> deletePermanently(
+    String userId,
+    String transactionId, {
+    bool sync = true,
+  }) async {
+    final isConnected = _connectivityService.isConnected;
+
+    try {
+      final transactionRef = _firestore
+          .collection('transactions')
+          .doc(transactionId);
+
+      if (isConnected) {
+        await _firestore.runTransaction((transaction) async {
+          // 1. Obtener la transacción actual
+          final transactionDoc = await transaction.get(transactionRef);
+
+          if (!transactionDoc.exists) {
+            throw Exception("La transacción no existe");
+          }
+
+          final transactionData = transactionDoc.data() as Map<String, dynamic>;
+          final isInTrash = transactionData['isInTrash'] == true;
+          final categoryId = transactionData['categoryId'] ?? '';
+
+          // Identificar si es parte de una transferencia
+          final bool isTransferTransaction =
+              categoryId == 'transfer_out' || categoryId == 'transfer_in';
+
+          // Si es parte de una transferencia, buscar la transacción relacionada
+          if (isTransferTransaction) {
+            // Determinar si es la transacción de salida o entrada
+            final relatedCategoryId =
+                categoryId == 'transfer_out' ? 'transfer_in' : 'transfer_out';
+
+            // Buscar la transacción relacionada
+            final relatedTransactionsQuery =
+                await _firestore
+                    .collection('transactions')
+                    .where('userId', isEqualTo: userId)
+                    .where(
+                      'fromAccountId',
+                      isEqualTo: transactionData['accountId'],
+                    )
+                    .where('categoryId', isEqualTo: relatedCategoryId)
+                    .where('amount', isEqualTo: transactionData['amount'])
+                    .where('dateTime', isEqualTo: transactionData['dateTime'])
+                    .get();
+
+            // Eliminar la transacción relacionada
+            if (relatedTransactionsQuery.docs.isNotEmpty) {
+              final relatedTransactionRef =
+                  relatedTransactionsQuery.docs.first.reference;
+              transaction.delete(relatedTransactionRef);
+            }
+          }
+
+          // Proceder con la eliminación de la transacción original
+          await _firestore
+              .collection('transactions')
+              .doc(transactionId)
+              .delete();
+        });
+      } else {
+        // Sin conexión, guardar para sincronizar después
+        if (sync) {
+          await _savePendingOperation('delete', userId, transactionId, {});
+        }
+      }
+    } catch (e) {
+      print('Error al eliminar permanentemente: $e');
+      // Si ocurre un error, guardar para sincronizar después
+      if (sync) {
+        await _savePendingOperation('delete', userId, transactionId, {});
+      }
+      rethrow;
+    }
+  }
+
   // Método para cargar cuentas
   Future<List<Account>> loadAccounts(String userId) async {
     try {
@@ -747,8 +826,6 @@ class TransactionService {
     }
   }
 
-  // Agregar una nueva transacción (con soporte offline)
-
   // Actualizar una transacción existente (con soporte offline)
   Future<void> updateTransaction(
     FinancialTransaction transaction, {
@@ -1045,6 +1122,129 @@ class TransactionService {
     }
   }
 
+  // Método para mover a papelera todas las transacciones de una cuenta
+  Future<void> moveAccountTransactionsToTrash(
+    String userId,
+    String accountId,
+  ) async {
+    try {
+      final isConnected = await _connectivityService.checkConnectivity();
+
+      if (isConnected) {
+        // Obtener todas las transacciones activas de esta cuenta
+        final transactions =
+            await _firestore
+                .collection('transactions')
+                .where('userId', isEqualTo: userId)
+                .where('accountId', isEqualTo: accountId)
+                .where('isInTrash', isNotEqualTo: true)
+                .get();
+
+        // También las transacciones donde esta cuenta es la cuenta de origen
+        final fromAccountTransactions =
+            await _firestore
+                .collection('transactions')
+                .where('userId', isEqualTo: userId)
+                .where('fromAccountId', isEqualTo: accountId)
+                .where('isInTrash', isNotEqualTo: true)
+                .get();
+
+        // Usar batch para mover todas a papelera
+        final batch = _firestore.batch();
+        final now = FieldValue.serverTimestamp();
+
+        for (var doc in transactions.docs) {
+          batch.update(doc.reference, {'isInTrash': true, 'trashedAt': now});
+        }
+
+        for (var doc in fromAccountTransactions.docs) {
+          batch.update(doc.reference, {'isInTrash': true, 'trashedAt': now});
+        }
+
+        // Ejecutar el batch
+        if (transactions.docs.isNotEmpty ||
+            fromAccountTransactions.docs.isNotEmpty) {
+          await batch.commit();
+          print(
+            'Movidas ${transactions.docs.length + fromAccountTransactions.docs.length} transacciones a papelera',
+          );
+        }
+      } else {
+        // Si no hay conexión, guardar la operación para sincronización posterior
+        await _savePendingOperation(
+          'moveAccountToTrash',
+          userId,
+          accountId,
+          {},
+        );
+      }
+    } catch (e) {
+      print('Error al mover transacciones de cuenta a papelera: $e');
+      throw e;
+    }
+  }
+
+  // Método para eliminar permanentemente todas las transacciones en papelera de una cuenta
+  Future<void> deleteAccountTrashTransactions(
+    String userId,
+    String accountId,
+  ) async {
+    try {
+      final isConnected = await _connectivityService.checkConnectivity();
+
+      if (isConnected) {
+        // Obtener todas las transacciones en papelera de esta cuenta
+        final transactions =
+            await _firestore
+                .collection('transactions')
+                .where('userId', isEqualTo: userId)
+                .where('accountId', isEqualTo: accountId)
+                .where('isInTrash', isEqualTo: true)
+                .get();
+
+        // También las transacciones donde esta cuenta es la cuenta de origen
+        final fromAccountTransactions =
+            await _firestore
+                .collection('transactions')
+                .where('userId', isEqualTo: userId)
+                .where('fromAccountId', isEqualTo: accountId)
+                .where('isInTrash', isEqualTo: true)
+                .get();
+
+        // Usar batch para eliminar permanentemente
+        final batch = _firestore.batch();
+
+        for (var doc in transactions.docs) {
+          batch.delete(doc.reference);
+        }
+
+        for (var doc in fromAccountTransactions.docs) {
+          batch.delete(doc.reference);
+        }
+
+        // Ejecutar el batch
+        if (transactions.docs.isNotEmpty ||
+            fromAccountTransactions.docs.isNotEmpty) {
+          await batch.commit();
+          print(
+            'Eliminadas ${transactions.docs.length + fromAccountTransactions.docs.length} transacciones permanentemente',
+          );
+        }
+      } else {
+        // Si no hay conexión, guardar la operación para sincronización posterior
+        await _savePendingOperation(
+          'deleteAccountTrash',
+          userId,
+          accountId,
+          {},
+        );
+      }
+    } catch (e) {
+      print('Error al eliminar transacciones de cuenta: $e');
+      throw e;
+    }
+  }
+
   Future<void> moveToTrash(
     String userId,
     String transactionId, {
@@ -1259,146 +1459,6 @@ class TransactionService {
     } catch (e) {
       print('Error al ajustar balances: $e');
       // No relanzamos error para no interrumpir el flujo
-    }
-  }
-
-  // Corrección para el método deletePermanently
-  Future<void> deletePermanently(
-    String userId,
-    String transactionId, {
-    bool sync = true,
-  }) async {
-    final isConnected = _connectivityService.isConnected;
-
-    try {
-      final transactionRef = _firestore
-          .collection('transactions')
-          .doc(transactionId);
-
-      if (isConnected) {
-        // Obtener datos de la transacción antes de eliminarla para actualizar presupuestos
-        final transactionDoc = await transactionRef.get();
-        if (!transactionDoc.exists) {
-          throw Exception("La transacción no existe");
-        }
-
-        final transactionData = transactionDoc.data() as Map<String, dynamic>;
-        final isInTrash = transactionData['isInTrash'] == true;
-        final isExpense = transactionData['type'] == 'expense';
-        final amount = (transactionData['amount'] ?? 0.0).toDouble();
-        final categoryId = transactionData['categoryId'] ?? '';
-        final dateTime = (transactionData['dateTime'] as Timestamp).toDate();
-        final isCreditCardPayment = categoryId == 'credit_card_payment';
-        final fromAccountId = transactionData['fromAccountId'];
-
-        await _firestore.runTransaction((transaction) async {
-          // PRIMER PASO: TODAS LAS LECTURAS
-
-          // 1. Leer la transacción (ya la tenemos de antes, pero por claridad la volvemos a leer)
-          final transactionDoc = await transaction.get(transactionRef);
-
-          if (!transactionDoc.exists) {
-            throw Exception("La transacción no existe");
-          }
-
-          final transactionData = transactionDoc.data() as Map<String, dynamic>;
-
-          // Si no está en papelera, debemos ajustar el balance
-          if (transactionData['isInTrash'] != true) {
-            final accountId = transactionData['accountId'];
-            final accountRef = _firestore
-                .collection('users')
-                .doc(userId)
-                .collection('accounts')
-                .doc(accountId);
-
-            // 2. Leer la cuenta principal
-            final accountDoc = await transaction.get(accountRef);
-
-            if (!accountDoc.exists) {
-              throw Exception("La cuenta no existe");
-            }
-
-            final accountData = accountDoc.data() as Map<String, dynamic>;
-            double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
-            double amount = (transactionData['amount'] ?? 0.0).toDouble();
-            String transactionType = transactionData['type'] ?? 'expense';
-
-            // CALCULAR NUEVO BALANCE
-
-            // Ajustar balance según tipo de transacción
-            if (transactionType == 'expense') {
-              currentBalance = currentBalance + amount; // Revertir un gasto
-            } else {
-              currentBalance = currentBalance - amount; // Revertir un ingreso
-            }
-
-            // 3. Leer la cuenta de origen si es un pago de tarjeta
-            DocumentSnapshot? fromAccountDoc;
-            double? fromAccountBalance;
-
-            if (isCreditCardPayment && fromAccountId != null) {
-              final fromAccountRef = _firestore
-                  .collection('users')
-                  .doc(userId)
-                  .collection('accounts')
-                  .doc(fromAccountId);
-
-              fromAccountDoc = await transaction.get(fromAccountRef);
-
-              if (fromAccountDoc.exists) {
-                final fromAccountData =
-                    fromAccountDoc.data() as Map<String, dynamic>;
-                // Usar una variable no-nula para el cálculo
-                final double currentFromBalance =
-                    (fromAccountData['balance'] ?? 0.0).toDouble();
-
-                // Asignar directamente a una variable potencialmente nula
-                fromAccountBalance = currentFromBalance + amount;
-              }
-            }
-
-            // SEGUNDO PASO: TODAS LAS ESCRITURAS
-
-            // 1. Actualizar el balance de la cuenta principal
-            transaction.update(accountRef, {'balance': currentBalance});
-
-            // 2. Actualizar la cuenta de origen si aplica
-            if (fromAccountDoc != null && fromAccountBalance != null) {
-              transaction.update(fromAccountDoc.reference, {
-                'balance': fromAccountBalance,
-              });
-            }
-          }
-
-          // 3. Eliminar la transacción
-          transaction.delete(transactionRef);
-        });
-
-        // Actualizar presupuestos si es necesario
-        // Solo si es un gasto y no está en papelera (si está en papelera, ya se actualizaron los presupuestos)
-        if (isExpense && !isInTrash && !isCreditCardPayment) {
-          await _budgetService.updateBudgetsForTransaction(
-            userId,
-            amount,
-            categoryId,
-            dateTime,
-            false, // quitar
-          );
-        }
-      } else {
-        // Sin conexión, guardar para sincronizar después
-        if (sync) {
-          await _savePendingOperation('delete', userId, transactionId, {});
-        }
-      }
-    } catch (e) {
-      print('Error al eliminar permanentemente: $e');
-      // Si ocurre un error, guardar para sincronizar después
-      if (sync) {
-        await _savePendingOperation('delete', userId, transactionId, {});
-      }
-      rethrow;
     }
   }
 

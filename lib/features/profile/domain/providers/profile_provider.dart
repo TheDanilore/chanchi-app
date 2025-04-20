@@ -12,6 +12,9 @@ class ProfileProvider extends ChangeNotifier {
   // Estado de UI
   bool _isLoading = true;
   bool _isEditing = false;
+  bool _hasError = false;
+  String _errorMessage = '';
+  bool _isActive = true; // Para controlar si el provider está activo
   
   // Datos del perfil
   String _name = 'Usuario';
@@ -45,6 +48,8 @@ class ProfileProvider extends ChangeNotifier {
   // Getters
   bool get isLoading => _isLoading;
   bool get isEditing => _isEditing;
+  bool get hasError => _hasError;
+  String get errorMessage => _errorMessage;
   String get name => _name;
   String get email => _email;
   String get avatarUrl => _avatarUrl;
@@ -53,39 +58,84 @@ class ProfileProvider extends ChangeNotifier {
   int get incomeCount => _incomeCount;
   int get expenseCount => _expenseCount;
   
+  // Método seguro para notificar a los oyentes
+  void _safeNotifyListeners() {
+    if (_isActive) {
+      notifyListeners();
+    }
+  }
+  
+  // Manejar error
+  void _handleError(dynamic error) {
+    _hasError = true;
+    
+    if (error is FirebaseException) {
+      if (error.code == 'permission-denied') {
+        _errorMessage = 'No tienes permisos para realizar esta operación. Por favor, contacta a soporte.';
+      } else {
+        _errorMessage = 'Error de Firebase: ${error.message ?? error.code}';
+      }
+    } else {
+      _errorMessage = error.toString();
+    }
+    
+    print('Error en ProfileProvider: $_errorMessage');
+  }
+  
   // Inicializar perfil
   Future<void> _initProfile() async {
+    if (!_isActive) return;
+    
     _isLoading = true;
-    notifyListeners();
+    _hasError = false;
+    _errorMessage = '';
+    _safeNotifyListeners();
     
     try {
       // Asegurar que el usuario esté inicializado en Firestore
-      await _profileService.initializeUser(user);
+      try {
+        await _profileService.initializeUser(user);
+      } catch (e) {
+        print('Error al inicializar usuario: $e');
+        // Continuar a pesar del error de inicialización
+      }
       
       // Cargar datos del perfil
-      await _loadProfileData();
+      try {
+        await _loadProfileData();
+      } catch (e) {
+        print('Error al cargar datos del perfil: $e');
+        _handleError(e);
+        // Continuar con datos predeterminados
+      }
       
       // Cargar estadísticas
-      await _loadStatistics();
+      try {
+        await _loadStatistics();
+      } catch (e) {
+        print('Error al cargar estadísticas: $e');
+        // No manejar como error crítico, continuar con estadísticas en cero
+      }
       
-      _isLoading = false;
-      notifyListeners();
     } catch (e) {
+      _handleError(e);
+    } finally {
       _isLoading = false;
-      notifyListeners();
-      throw e;
+      _safeNotifyListeners();
     }
   }
   
   // Cargar datos del perfil
   Future<void> _loadProfileData() async {
+    if (!_isActive) return;
+    
     try {
       final userData = await _profileService.getUserData(user.uid).first;
       
       if (userData.exists) {
         final data = userData.data() as Map<String, dynamic>;
         
-        _name = data['name'] ?? 'Usuario';
+        _name = data['name'] ?? user.displayName ?? 'Usuario';
         _email = data['email'] ?? user.email ?? 'Sin correo';
         _avatarUrl = data['avatarUrl'] ?? '';
         _bio = data['bio'] ?? 'Agrega una descripción sobre ti';
@@ -93,16 +143,36 @@ class ProfileProvider extends ChangeNotifier {
         // Inicializar controladores
         nameController.text = _name;
         bioController.text = _bio;
+      } else {
+        // Si no hay datos, usar datos del usuario de Firebase Auth
+        _name = user.displayName ?? 'Usuario';
+        _email = user.email ?? 'Sin correo';
+        _avatarUrl = user.photoURL ?? '';
+        
+        // Inicializar controladores
+        nameController.text = _name;
+        bioController.text = _bio;
       }
       
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      // En caso de error, usar datos básicos del usuario
+      _name = user.displayName ?? 'Usuario';
+      _email = user.email ?? 'Sin correo';
+      _avatarUrl = user.photoURL ?? '';
+      
+      // Inicializar controladores
+      nameController.text = _name;
+      bioController.text = _bio;
+      
       throw e;
     }
   }
   
   // Cargar estadísticas
   Future<void> _loadStatistics() async {
+    if (!_isActive) return;
+    
     try {
       final snapshot = await _firestore
           .collection('transactions')
@@ -123,25 +193,32 @@ class ProfileProvider extends ChangeNotifier {
         }
       }
       
-      notifyListeners();
+      _safeNotifyListeners();
     } catch (e) {
+      // En caso de error, dejar las estadísticas en cero
+      _totalTransactions = 0;
+      _incomeCount = 0;
+      _expenseCount = 0;
       throw e;
     }
   }
   
   // Refrescar perfil
   void refreshProfile() {
+    if (!_isActive) return;
     _initProfile();
   }
   
   // Actualizar estado de carga
   void setLoading(bool loading) {
+    if (!_isActive) return;
     _isLoading = loading;
-    notifyListeners();
+    _safeNotifyListeners();
   }
   
   // Cambiar a modo edición
   void setEditing([bool editing = true]) {
+    if (!_isActive) return;
     _isEditing = editing;
     
     if (!editing) {
@@ -151,12 +228,23 @@ class ProfileProvider extends ChangeNotifier {
       confirmPasswordController.clear();
     }
     
-    notifyListeners();
+    _safeNotifyListeners();
+  }
+  
+  // Limpiar error
+  void clearError() {
+    if (!_isActive) return;
+    _hasError = false;
+    _errorMessage = '';
+    _safeNotifyListeners();
   }
   
   // Guardar perfil
-  Future<void> saveProfile() async {
+  Future<bool> saveProfile() async {
+    if (!_isActive) return false;
+    
     setLoading(true);
+    clearError();
     
     try {
       // Actualizar datos básicos
@@ -189,24 +277,53 @@ class ProfileProvider extends ChangeNotifier {
       // Salir de modo edición
       setEditing(false);
       setLoading(false);
+      return true;
     } catch (e) {
+      _handleError(e);
       setLoading(false);
-      throw e;
+      return false;
     }
   }
   
   // Cerrar sesión
-  Future<void> signOut() async {
-    await _profileService.signOut();
+  Future<bool> signOut() async {
+    if (!_isActive) return false;
+    
+    setLoading(true);
+    clearError();
+    
+    try {
+      await _profileService.signOut();
+      setLoading(false);
+      return true;
+    } catch (e) {
+      _handleError(e);
+      setLoading(false);
+      return false;
+    }
   }
   
   // Eliminar cuenta
-  Future<void> deleteAccount(String password) async {
-    await _profileService.deleteAccount(user, password);
+  Future<bool> deleteAccount(String password) async {
+    if (!_isActive) return false;
+    
+    setLoading(true);
+    clearError();
+    
+    try {
+      await _profileService.deleteAccount(user, password);
+      setLoading(false);
+      return true;
+    } catch (e) {
+      _handleError(e);
+      setLoading(false);
+      return false;
+    }
   }
   
   @override
   void dispose() {
+    _isActive = false;
     // Limpiar controladores
     nameController.dispose();
     bioController.dispose();

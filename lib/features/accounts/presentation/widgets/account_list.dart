@@ -8,6 +8,7 @@ class AccountList extends StatelessWidget {
   final List<Account> accounts;
   final Function(Account) onEditAccount;
   final VoidCallback onAddAccount;
+  final String userId; // Añadimos el userId como propiedad requerida
   final AccountService _accountService = AccountService();
 
   AccountList({
@@ -15,6 +16,7 @@ class AccountList extends StatelessWidget {
     required this.accounts,
     required this.onEditAccount,
     required this.onAddAccount,
+    required this.userId, // Requerimos el userId desde el constructor
   }) : super(key: key);
 
   @override
@@ -153,8 +155,33 @@ class AccountList extends StatelessWidget {
   }
 
   Future<bool> _confirmDelete(BuildContext context, Account account) async {
-    return await showDialog(
+    // Primero, verificar si hay transacciones asociadas
+    int? associatedTransactions;
+    String accountId = '';
+
+    // Extraer correctamente el accountId
+    if (account.id.contains('/')) {
+      final parts = account.id.split('/');
+      accountId = parts[1];
+    } else {
+      accountId = account.id;
+    }
+
+    // Obtener el recuento de transacciones
+    try {
+      associatedTransactions = await _accountService
+          .getAssociatedTransactionsCount(
+            userId, // Usamos el userId que ahora es una propiedad de la clase
+            accountId,
+          );
+    } catch (e) {
+      print('Error al verificar transacciones asociadas: $e');
+    }
+
+    // Mostrar diálogo de confirmación
+    final result = await showDialog<bool>(
       context: context,
+      barrierDismissible: false,
       builder: (BuildContext context) {
         return AlertDialog(
           shape: RoundedRectangleBorder(
@@ -167,6 +194,37 @@ class AccountList extends StatelessWidget {
             children: [
               Text("¿Estás seguro que deseas eliminar esta cuenta?"),
               const SizedBox(height: AppTheme.spacingM),
+
+              // Mostrar información sobre transacciones asociadas si las hay
+              if (associatedTransactions != null && associatedTransactions > 0)
+                Container(
+                  padding: const EdgeInsets.all(AppTheme.spacingM),
+                  decoration: BoxDecoration(
+                    color: Colors.amber.shade50,
+                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                    border: Border.all(color: Colors.amber.shade200),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.amber.shade700),
+                      const SizedBox(width: AppTheme.spacingM),
+                      Expanded(
+                        child: Text(
+                          "Esta cuenta tiene $associatedTransactions transacciones asociadas. "
+                          "Estas transacciones se moverán a la papelera.",
+                          style: TextStyle(
+                            color: Colors.amber.shade700,
+                            fontSize: 14,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+              if (associatedTransactions != null && associatedTransactions > 0)
+                const SizedBox(height: AppTheme.spacingM),
+
               Container(
                 padding: const EdgeInsets.all(AppTheme.spacingM),
                 decoration: BoxDecoration(
@@ -183,7 +241,7 @@ class AccountList extends StatelessWidget {
                     const SizedBox(width: AppTheme.spacingM),
                     Expanded(
                       child: Text(
-                        "Esta acción no se puede deshacer y eliminará todas las transacciones asociadas a esta cuenta.",
+                        "Esta acción no se puede deshacer y eliminará la cuenta permanentemente.",
                         style: TextStyle(
                           color: Colors.red.shade700,
                           fontSize: 14,
@@ -209,68 +267,107 @@ class AccountList extends StatelessWidget {
         );
       },
     );
+
+    // Manejar el caso en que el resultado sea nulo
+    return result ?? false;
   }
 
   void _deleteAccount(BuildContext context, Account account) async {
     try {
-      // Depuración para ver la estructura del ID
-      print('ID completo de la cuenta: ${account.id}');
-
-      // Verificar si el ID incluye el userId
-      final parts = account.id.split('/');
-
-      String userId;
-      String accountId;
-
-      if (parts.length > 1) {
-        // Si el ID tiene más de una parte, asumir que la primera es el userId
-        userId = parts[0];
-        accountId = parts[1];
-      } else {
-        // Si solo hay una parte, usar el userId pasado desde el padre
-        // Esto requiere modificar cómo se pasa el userId al AccountList
-        throw Exception('Estructura de ID de cuenta no válida');
-      }
-
-      print('User ID extraído: $userId');
-      print('Account ID extraído: $accountId');
-
-      await _accountService.deleteAccount(userId, accountId);
-
-      // Resto del código de éxito...
-    } catch (e) {
-      print('Error en _deleteAccount: $e');
-
-      // Mostrar error con un diseño más informativo
+      // Mostrar indicador de carga
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Row(
             children: [
-              Icon(Icons.error_outline, color: Colors.white),
-              SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  "Error al eliminar la cuenta: ${e.toString()}",
-                  style: TextStyle(color: Colors.white),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+              SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: Colors.white,
                 ),
               ),
+              SizedBox(width: 12),
+              Text("Eliminando cuenta..."),
             ],
           ),
-          backgroundColor: Colors.red,
-          behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(10),
-          ),
-          margin: EdgeInsets.only(
-            bottom: MediaQuery.of(context).size.height - 150,
-            left: 16,
-            right: 16,
-          ),
-          duration: Duration(seconds: 3),
+          duration: Duration(seconds: 30), // Duración larga mientras se procesa
         ),
       );
+
+      // Extraer accountId del ID completo
+      String accountId;
+
+      if (account.id.contains('/')) {
+        final parts = account.id.split('/');
+        accountId = parts[1];
+      } else {
+        accountId = account.id;
+      }
+
+      print('User ID: $userId');
+      print('Account ID: $accountId');
+
+      // Llamar al servicio para eliminar la cuenta y sus transacciones
+      await _accountService.deleteAccount(userId, accountId);
+
+      // Ocultar el indicador de carga
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+        // Mostrar mensaje de éxito
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.check_circle, color: Colors.white),
+                SizedBox(width: 12),
+                Text("Cuenta eliminada correctamente"),
+              ],
+            ),
+            backgroundColor: Colors.green,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      print('Error en _deleteAccount: $e');
+
+      // Ocultar el indicador de carga si existe
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+        // Mostrar error con un diseño más informativo
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Row(
+              children: [
+                Icon(Icons.error_outline, color: Colors.white),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    "Error al eliminar la cuenta: ${e.toString()}",
+                    style: TextStyle(color: Colors.white),
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+            backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+            margin: EdgeInsets.only(
+              bottom: MediaQuery.of(context).size.height - 150,
+              left: 16,
+              right: 16,
+            ),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     }
   }
 

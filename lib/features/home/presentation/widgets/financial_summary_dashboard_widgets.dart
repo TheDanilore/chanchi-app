@@ -1,4 +1,5 @@
 import 'package:chanchi_app/core/utils/currency_util.dart';
+import 'package:chanchi_app/features/accounts/presentation/widgets/animated_balance_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chanchi_app/core/config/theme.dart';
@@ -16,13 +17,20 @@ class FinancialSummaryDashboard extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  _FinancialSummaryDashboardState createState() =>
-      _FinancialSummaryDashboardState();
+  State<FinancialSummaryDashboard> createState() =>
+      FinancialSummaryDashboardState();
 }
 
-class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
+class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
   final _firestore = FirebaseFirestore.instance;
   bool _isBalanceHidden = false;
+
+  // Método de actualización
+  Future<void> refresh() async {
+    if (mounted) {
+      setState(() {}); // Forzar actualización del widget
+    }
+  }
 
   Query _getMonthlyTransactionsQuery() {
     final firstDayOfMonth = DateTime(
@@ -227,13 +235,10 @@ class _FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
             return Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _isBalanceHidden
-                      ? "S/•••.••"
-                      : CurrencyUtil.format(
-                        amount: totalBalance,
-                        currencyCode: 'PEN',
-                      ),
+                AnimatedBalanceWidget(
+                  balance: totalBalance,
+                  currencySymbol: 'S/',
+                  isHidden: _isBalanceHidden,
                   style: Theme.of(context).textTheme.headlineMedium?.copyWith(
                     fontWeight: FontWeight.bold,
                     color:
