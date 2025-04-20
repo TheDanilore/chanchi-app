@@ -1,233 +1,217 @@
-import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// lib/features/profile/presentation/widgets/profile_edit_form.dart
 import 'package:chanchi_app/core/config/theme.dart';
+import 'package:chanchi_app/core/utils/error_handler.dart';
+import 'package:chanchi_app/core/widgets/custom_text_field.dart';
+import 'package:chanchi_app/features/profile/domain/providers/profile_provider.dart';
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
-class ProfileEditForm extends StatefulWidget {
-  final TextEditingController nameController;
-  final TextEditingController bioController;
-  final TextEditingController oldPasswordController;
-  final TextEditingController newPasswordController;
-  final TextEditingController confirmPasswordController;
-  final bool isLoading;
-  final VoidCallback onSave;
-  final VoidCallback onCancel;
-  final User user;
-
-  const ProfileEditForm({
-    Key? key,
-    required this.nameController,
-    required this.bioController,
-    required this.oldPasswordController,
-    required this.newPasswordController,
-    required this.confirmPasswordController,
-    required this.isLoading,
-    required this.onSave,
-    required this.onCancel,
-    required this.user,
-  }) : super(key: key);
-
-  @override
-  State<ProfileEditForm> createState() => _ProfileEditFormState();
-}
-
-class _ProfileEditFormState extends State<ProfileEditForm> {
-  bool _obscureOldPassword = true;
-  bool _obscureNewPassword = true;
-  bool _obscureConfirmPassword = true;
-  bool _showPasswordFields = false;
-
-  @override
-  void initState() {
-    super.initState();
-    // Determinar si mostrar campos de contraseña basado en el proveedor de inicio de sesión
-    _showPasswordFields = widget.user.providerData.any(
-      (provider) => provider.providerId == 'password'
-    );
-  }
+class ProfileEditForm extends StatelessWidget {
+  const ProfileEditForm({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            Text(
-              "Editar Perfil", 
-              style: theme.textTheme.titleLarge?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
-            ),
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: widget.isLoading ? null : widget.onCancel,
-            ),
-          ],
-        ),
-        
-        const SizedBox(height: AppTheme.spacingM),
-        
-        // Formulario de edición
-        TextFormField(
-          controller: widget.nameController,
-          decoration: InputDecoration(
-            labelText: "Nombre",
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppTheme.radiusM),
-            ),
-            prefixIcon: const Icon(Icons.person),
-          ),
-        ),
-        
-        const SizedBox(height: AppTheme.spacingM),
-        
-        TextFormField(
-          controller: widget.bioController,
-          decoration: InputDecoration(
-            labelText: "Acerca de mí",
-            border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(AppTheme.radiusM),
-            ),
-            prefixIcon: const Icon(Icons.description),
-          ),
-          maxLines: 3,
-        ),
-        
-        if (_showPasswordFields) ...[
-          const SizedBox(height: AppTheme.spacingL),
-          
-          // Sección de cambio de contraseña
+    final provider = Provider.of<ProfileProvider>(context);
+    
+    return Form(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
           Text(
-            "Cambiar Contraseña (opcional)", 
-            style: theme.textTheme.titleMedium?.copyWith(
+            'Editar Perfil',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              color: AppTheme.textPrimaryColor,
               fontWeight: FontWeight.bold,
             ),
           ),
+          const SizedBox(height: 24),
           
-          const SizedBox(height: AppTheme.spacingM),
-          
-          TextFormField(
-            controller: widget.oldPasswordController,
-            decoration: InputDecoration(
-              labelText: "Contraseña actual",
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-              ),
-              prefixIcon: const Icon(Icons.lock),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureOldPassword ? Icons.visibility : Icons.visibility_off,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _obscureOldPassword = !_obscureOldPassword;
-                  });
-                },
-              ),
-            ),
-            obscureText: _obscureOldPassword,
+          // Campo de nombre
+          CustomTextField(
+            controller: provider.nameController,
+            label: 'Nombre',
+            hint: 'Ingresa tu nombre',
+            icon: Icons.person,
+            validator: (value) {
+              if (value == null || value.isEmpty) {
+                return 'Por favor ingresa tu nombre';
+              }
+              return null;
+            },
           ),
+          const SizedBox(height: 16),
           
-          const SizedBox(height: AppTheme.spacingM),
-          
-          TextFormField(
-            controller: widget.newPasswordController,
-            decoration: InputDecoration(
-              labelText: "Nueva contraseña",
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
-              ),
-              prefixIcon: const Icon(Icons.lock_reset),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureNewPassword ? Icons.visibility : Icons.visibility_off,
-                ),
-                onPressed: () {
-                  setState(() {
-                    _obscureNewPassword = !_obscureNewPassword;
-                  });
-                },
-              ),
-            ),
-            obscureText: _obscureNewPassword,
+          // Campo de biografía
+          CustomTextField(
+            controller: provider.bioController,
+            label: 'Descripción',
+            hint: 'Cuenta algo sobre ti',
+            icon: Icons.description,
+            maxLines: 3,
           ),
+          const SizedBox(height: 24),
           
-          const SizedBox(height: AppTheme.spacingM),
+          // Sección de cambio de contraseña
+          _buildPasswordSection(context, provider),
           
-          TextFormField(
-            controller: widget.confirmPasswordController,
-            decoration: InputDecoration(
-              labelText: "Confirmar nueva contraseña",
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+          const SizedBox(height: 32),
+          
+          // Botones de acción
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton(
+                onPressed: provider.isLoading 
+                    ? null 
+                    : () => provider.setEditing(false),
+                child: const Text('Cancelar'),
               ),
-              prefixIcon: const Icon(Icons.lock_outline),
-              suffixIcon: IconButton(
-                icon: Icon(
-                  _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
+              const SizedBox(width: 16),
+              ElevatedButton(
+                onPressed: provider.isLoading 
+                    ? null 
+                    : () => _saveProfile(context, provider),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: AppTheme.primaryColor,
+                  foregroundColor: Colors.white,
                 ),
-                onPressed: () {
-                  setState(() {
-                    _obscureConfirmPassword = !_obscureConfirmPassword;
-                  });
-                },
+                child: provider.isLoading
+                    ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(
+                          color: Colors.white,
+                          strokeWidth: 2,
+                        ),
+                      )
+                    : const Text('Guardar Cambios'),
               ),
-            ),
-            obscureText: _obscureConfirmPassword,
+            ],
           ),
         ],
+      ),
+    );
+  }
+  
+  // Sección de cambio de contraseña
+  Widget _buildPasswordSection(BuildContext context, ProfileProvider provider) {
+    // Solo mostrar para usuarios con correo/contraseña
+    final user = provider.user;
+    final isPasswordUser = user.providerData.any((provider) => provider.providerId == 'password');
+    
+    if (!isPasswordUser) {
+      return const SizedBox.shrink();
+    }
+    
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Divider(),
+        const SizedBox(height: 16),
         
-        const SizedBox(height: AppTheme.spacingXL),
+        Text(
+          'Cambiar Contraseña',
+          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+            color: AppTheme.textPrimaryColor,
+            fontWeight: FontWeight.bold,
+          ),
+        ),
+        const SizedBox(height: 16),
         
-        // Botones de acción
-        Row(
-          children: [
-            Expanded(
-              child: OutlinedButton(
-                onPressed: widget.isLoading ? null : widget.onCancel,
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: theme.primaryColor,
-                  side: BorderSide(color: theme.primaryColor),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                  ),
-                ),
-                child: const Text("Cancelar"),
-              ),
-            ),
-            
-            const SizedBox(width: AppTheme.spacingM),
-            
-            Expanded(
-              child: ElevatedButton(
-                onPressed: widget.isLoading ? null : widget.onSave,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.primaryColor,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                  ),
-                ),
-                child: widget.isLoading
-                  ? const SizedBox(
-                      width: 24,
-                      height: 24,
-                      child: CircularProgressIndicator(
-                        color: Colors.white,
-                        strokeWidth: 3,
-                      ),
-                    )
-                  : const Text("Guardar Cambios"),
-              ),
-            ),
-          ],
+        // Contraseña actual
+        PasswordField(
+          controller: provider.oldPasswordController,
+          label: 'Contraseña Actual',
+        ),
+        const SizedBox(height: 16),
+        
+        // Nueva contraseña
+        PasswordField(
+          controller: provider.newPasswordController,
+          label: 'Nueva Contraseña',
+        ),
+        const SizedBox(height: 16),
+        
+        // Confirmar contraseña
+        PasswordField(
+          controller: provider.confirmPasswordController,
+          label: 'Confirmar Nueva Contraseña',
+          validator: (value) {
+            if (value != provider.newPasswordController.text) {
+              return 'Las contraseñas no coinciden';
+            }
+            return null;
+          },
         ),
       ],
+    );
+  }
+  
+  // Guardar perfil
+  void _saveProfile(BuildContext context, ProfileProvider provider) {
+    // Validar contraseñas si se están cambiando
+    if (provider.newPasswordController.text.isNotEmpty) {
+      if (provider.newPasswordController.text != provider.confirmPasswordController.text) {
+        ErrorHandler.showErrorSnackBar(context, 'Las contraseñas no coinciden');
+        return;
+      }
+      
+      if (provider.oldPasswordController.text.isEmpty) {
+        ErrorHandler.showErrorSnackBar(context, 'Debes ingresar tu contraseña actual');
+        return;
+      }
+    }
+    
+    // Guardar cambios
+    ErrorHandler.handleFutureWithLoading(
+      () => provider.saveProfile(),
+      context,
+      loadingMessage: 'Guardando cambios...',
+      successMessage: 'Perfil actualizado correctamente',
+    );
+  }
+}
+
+// Campo de contraseña con visibilidad
+class PasswordField extends StatefulWidget {
+  final TextEditingController controller;
+  final String label;
+  final String? Function(String?)? validator;
+
+  const PasswordField({
+    Key? key,
+    required this.controller,
+    required this.label,
+    this.validator,
+  }) : super(key: key);
+
+  @override
+  _PasswordFieldState createState() => _PasswordFieldState();
+}
+
+class _PasswordFieldState extends State<PasswordField> {
+  bool _obscureText = true;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextFormField(
+      controller: widget.controller,
+      obscureText: _obscureText,
+      decoration: InputDecoration(
+        labelText: widget.label,
+        border: const OutlineInputBorder(),
+        suffixIcon: IconButton(
+          icon: Icon(
+            _obscureText ? Icons.visibility : Icons.visibility_off,
+          ),
+          onPressed: () {
+            setState(() {
+              _obscureText = !_obscureText;
+            });
+          },
+        ),
+      ),
+      validator: widget.validator,
     );
   }
 }

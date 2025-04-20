@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:chanchi_app/core/config/theme.dart';
-import 'package:chanchi_app/presentation/pages/auth_check.dart';
+import 'package:chanchi_app/features/pages/auth_check.dart';
 import 'package:chanchi_app/services/notification_service.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';

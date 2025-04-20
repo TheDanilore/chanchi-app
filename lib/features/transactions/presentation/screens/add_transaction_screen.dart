@@ -6,7 +6,7 @@ import 'package:chanchi_app/core/utils/currency_util.dart';
 import 'package:chanchi_app/core/widgets/category_selector.dart';
 import 'package:chanchi_app/data/models/account.dart';
 import 'package:chanchi_app/data/models/category.dart';
-import 'package:chanchi_app/data/models/transaction.dart';
+import 'package:chanchi_app/features/home/domain/models/transaction.dart';
 import 'package:chanchi_app/features/home/presentation/screens/home_screen.dart';
 import 'package:chanchi_app/features/transactions/domain/services/transaction_service.dart';
 import 'package:chanchi_app/features/transactions/presentation/widgets/account_chip_selector.dart';

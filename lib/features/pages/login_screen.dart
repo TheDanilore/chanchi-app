@@ -1,6 +1,6 @@
-import 'package:chanchi_app/presentation/pages/forgot_password_screen.dart';
+import 'package:chanchi_app/features/pages/forgot_password_screen.dart';
 import 'package:chanchi_app/features/home/presentation/screens/home_screen.dart';
-import 'package:chanchi_app/presentation/pages/register_screen.dart';
+import 'package:chanchi_app/features/pages/register_screen.dart';
 import 'package:chanchi_app/core/widgets/custom_button.dart';
 import 'package:chanchi_app/core/widgets/custom_text_field.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';

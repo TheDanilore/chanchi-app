@@ -1,54 +1,94 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:chanchi_app/features/transactions/domain/services/transaction_service.dart';
-import 'package:chanchi_app/services/connectivity_service.dart';
-import 'package:chanchi_app/services/offline_sync_service.dart';
+// lib/features/home/domain/services/home_service.dart
+import 'package:chanchi_app/core/utils/connectivity_helper.dart';
+import 'package:chanchi_app/features/home/data/repositories/transaction_repository.dart';
+import 'package:chanchi_app/features/home/data/repositories/sync_repository.dart';
+import 'package:chanchi_app/features/home/domain/models/transaction.dart';
 
 class HomeService {
-  final FirebaseFirestore _firestore;
-  final TransactionService _transactionService;
-  final ConnectivityService _connectivityService;
-  final OfflineSyncService _offlineService;
-
-  HomeService(this._firestore, this._transactionService, this._connectivityService, this._offlineService);
-
-  Stream<QuerySnapshot> getMonthlyTransactions(String userId, DateTime selectedMonth) {
-    final firstDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month, 1);
-    final lastDayOfMonth = DateTime(selectedMonth.year, selectedMonth.month + 1, 0, 23, 59, 59);
-
-    return _firestore
-        .collection('transactions')
-        .where('userId', isEqualTo: userId)
-        .where('isInTrash', isNotEqualTo: true)
-        .where('dateTime', isGreaterThanOrEqualTo: firstDayOfMonth)
-        .where('dateTime', isLessThanOrEqualTo: lastDayOfMonth)
-        .snapshots();
-  }
-
-  Stream<QuerySnapshot> getAccounts(String userId) {
-    return _firestore.collection('users').doc(userId).collection('accounts').snapshots();
-  }
-
-  Stream<QuerySnapshot> getTrashTransactions(String userId) {
-    return _firestore
-        .collection('transactions')
-        .where('userId', isEqualTo: userId)
-        .where('isInTrash', isEqualTo: true)
-        .snapshots();
-  }
-
-  Future<int> getPendingOperationsCount(String userId) async {
-    return _transactionService.getPendingOperationsCount(userId);
-  }
-
-  Future<void> syncPendingOperations(String userId) async {
-    return _transactionService.syncPendingOperations(userId);
-  }
-
-  Future<bool> attemptSync() async {
-    return _offlineService.attemptSync();
-  }
-
+  final TransactionRepository _transactionRepository;
+  final SyncRepository _syncRepository;
+  final ConnectivityHelper _connectivityHelper;
+  
+  HomeService({
+    TransactionRepository? transactionRepository,
+    SyncRepository? syncRepository,
+    ConnectivityHelper? connectivityHelper,
+  }) : 
+    _transactionRepository = transactionRepository ?? TransactionRepository(),
+    _syncRepository = syncRepository ?? SyncRepository(),
+    _connectivityHelper = connectivityHelper ?? ConnectivityHelper();
+  
+  // Verificar conectividad
   Future<bool> checkConnectivity() async {
-    return _connectivityService.checkConnectivity();
+    return await _connectivityHelper.isConnected();
+  }
+  
+  // Obtener cantidad de operaciones pendientes
+  Future<int> getPendingOperationsCount(String userId) async {
+    return await _syncRepository.getPendingOperationsCount(userId);
+  }
+  
+  // Intentar sincronizar datos
+  Future<bool> attemptSync() async {
+    final isConnected = await checkConnectivity();
+    if (!isConnected) return false;
+    
+    await _syncRepository.syncPendingOperations();
+    return true;
+  }
+  
+  // Sincronizar operaciones pendientes para un usuario específico
+  Future<void> syncPendingOperations(String userId) async {
+    await _syncRepository.syncPendingOperations(userId);
+  }
+  
+  // Obtener transacciones para un usuario
+  Future<List<Transaction>> getTransactions(
+    String userId, {
+    DateTime? startDate,
+    DateTime? endDate,
+    String? categoryId,
+    String? accountId,
+  }) async {
+    return await _transactionRepository.getTransactions(
+      userId,
+      startDate: startDate,
+      endDate: endDate,
+      categoryId: categoryId,
+      accountId: accountId,
+    );
+  }
+  
+  // Obtener resumen financiero
+  Future<Map<String, dynamic>> getFinancialSummary(
+    String userId,
+    DateTime month,
+  ) async {
+    final startDate = DateTime(month.year, month.month, 1);
+    final endDate = DateTime(month.year, month.month + 1, 0);
+    
+    final transactions = await _transactionRepository.getTransactions(
+      userId,
+      startDate: startDate,
+      endDate: endDate,
+    );
+    
+    double totalIncome = 0;
+    double totalExpense = 0;
+    
+    for (var transaction in transactions) {
+      if (transaction.type == 'income') {
+        totalIncome += transaction.amount;
+      } else {
+        totalExpense += transaction.amount;
+      }
+    }
+    
+    return {
+      'totalIncome': totalIncome,
+      'totalExpense': totalExpense,
+      'balance': totalIncome - totalExpense,
+      'transactionCount': transactions.length,
+    };
   }
 }

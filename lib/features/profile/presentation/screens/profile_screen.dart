@@ -1,72 +1,40 @@
+// lib/features/profile/presentation/screens/profile_screen.dart
 import 'package:chanchi_app/core/config/theme.dart';
-import 'package:chanchi_app/features/profile/domain/services/profile_service.dart';
+import 'package:chanchi_app/core/utils/error_handler.dart';
+import 'package:chanchi_app/features/profile/domain/providers/profile_provider.dart';
 import 'package:chanchi_app/features/profile/presentation/widgets/profile_content.dart';
 import 'package:chanchi_app/features/profile/presentation/widgets/profile_edit_form.dart';
 import 'package:chanchi_app/features/profile/presentation/widgets/profile_header.dart';
 import 'package:chanchi_app/core/widgets/migration_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:provider/provider.dart';
 
-class ProfileScreen extends StatefulWidget {
+class ProfileScreen extends StatelessWidget {
   final User user;
 
   const ProfileScreen({Key? key, required this.user}) : super(key: key);
 
   @override
-  State<ProfileScreen> createState() => _ProfileScreenState();
+  Widget build(BuildContext context) {
+    return ChangeNotifierProvider(
+      create: (_) => ProfileProvider(user),
+      child: ProfileScreenContent(user: user),
+    );
+  }
 }
 
-class _ProfileScreenState extends State<ProfileScreen> {
-  final ProfileService _profileService = ProfileService();
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
-  
-  bool _isLoading = false;
-  bool _isEditing = false;
-  
-  // Controladores para los campos de texto
-  final TextEditingController _nameController = TextEditingController();
-  final TextEditingController _bioController = TextEditingController();
-  final TextEditingController _oldPasswordController = TextEditingController();
-  final TextEditingController _newPasswordController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+class ProfileScreenContent extends StatelessWidget {
+  final User user;
 
-  @override
-  void initState() {
-    super.initState();
-    // Asegurar que el usuario esté inicializado en Firestore
-    _profileService.initializeUser(widget.user);
-  }
-
-  @override
-  void dispose() {
-    _nameController.dispose();
-    _bioController.dispose();
-    _oldPasswordController.dispose();
-    _newPasswordController.dispose();
-    _confirmPasswordController.dispose();
-    super.dispose();
-  }
-
-  void _setLoading(bool loading) {
-    if (mounted) {
-      setState(() {
-        _isLoading = loading;
-      });
-    }
-  }
-
-  void _refreshProfile() {
-    if (mounted) {
-      setState(() {});
-    }
-  }
+  const ProfileScreenContent({Key? key, required this.user}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDarkMode = theme.brightness == Brightness.dark;
-
+    final provider = Provider.of<ProfileProvider>(context);
+    
     return Scaffold(
       extendBodyBehindAppBar: true,
       appBar: AppBar(
@@ -80,315 +48,152 @@ class _ProfileScreenState extends State<ProfileScreen> {
           IconButton(
             icon: const Icon(Icons.update, color: AppTheme.cardColor),
             tooltip: 'Actualizar base de datos',
-            onPressed: _showMigrationDialog,
+            onPressed: () => _showMigrationDialog(context),
           ),
           IconButton(
             icon: const Icon(Icons.logout, color: AppTheme.cardColor),
-            onPressed: _logout,
+            onPressed: () => _logout(context, provider),
             tooltip: 'Cerrar sesión',
           ),
         ],
       ),
-      body: StreamBuilder<DocumentSnapshot>(
-        stream: _profileService.getUserData(widget.user.uid),
-        builder: (context, userSnapshot) {
-          if (!userSnapshot.hasData || !userSnapshot.data!.exists) {
-            return Center(
-              child: CircularProgressIndicator(color: theme.primaryColor),
-            );
-          }
-
-          final userData = userSnapshot.data!.data() as Map<String, dynamic>;
-          String name = userData['name'] ?? 'Usuario';
-          String email = userData['email'] ?? widget.user.email ?? 'Sin correo';
-          String avatarUrl = userData['avatarUrl'] ?? '';
-          String bio = userData['bio'] ?? 'Agrega una descripción sobre ti';
-          
-          // Inicializar controladores con datos existentes
-          if (!_isEditing) {
-            _nameController.text = name;
-            _bioController.text = bio;
-          }
-
-          return StreamBuilder<QuerySnapshot>(
-            stream: _getTransactionsStream(),
-            builder: (context, transactionSnapshot) {
-              // Calcular estadísticas
-              int totalTransactions = 0;
-              int incomeCount = 0;
-              int expenseCount = 0;
-              
-              if (transactionSnapshot.hasData) {
-                totalTransactions = transactionSnapshot.data!.docs.length;
-                
-                for (var doc in transactionSnapshot.data!.docs) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  if (data['type'] == 'income') {
-                    incomeCount++;
-                  } else if (data['type'] == 'expense') {
-                    expenseCount++;
-                  }
-                }
-              }
-
-              return _buildProfileScreen(
-                name,
-                email,
-                avatarUrl,
-                bio,
-                totalTransactions,
-                incomeCount,
-                expenseCount,
-                theme,
-                isDarkMode,
-              );
-            },
-          );
-        },
-      ),
-    );
-  }
-
-  Stream<QuerySnapshot> _getTransactionsStream() {
-    return _firestore
-        .collection('transactions')
-        .where('userId', isEqualTo: widget.user.uid)
-        .where('isInTrash', isEqualTo: false)
-        .snapshots();
-  }
-
-  Widget _buildProfileScreen(
-    String name,
-    String email,
-    String avatarUrl,
-    String bio,
-    int totalTransactions,
-    int incomeCount,
-    int expenseCount,
-    ThemeData theme,
-    bool isDarkMode,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: [
-            theme.primaryColor,
-            theme.colorScheme.secondary,
-            AppTheme.accentColor,
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-      ),
-      child: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              // Cabecera con foto, nombre y correo
-              ProfileHeader(
-                user: widget.user,
-                name: name,
-                email: email,
-                avatarUrl: avatarUrl,
-                setLoading: _setLoading,
-                refreshProfile: _refreshProfile,
-              ),
-              
-              // Contenido principal
-              Container(
-                width: double.infinity,
-                decoration: BoxDecoration(
-                  color: isDarkMode ? AppTheme.darkCardColor : AppTheme.cardColor,
-                  borderRadius: const BorderRadius.only(
-                    topLeft: Radius.circular(AppTheme.radiusXL),
-                    topRight: Radius.circular(AppTheme.radiusXL),
-                  ),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      spreadRadius: 1,
-                      blurRadius: 10,
-                      offset: const Offset(0, -5),
-                    ),
+      body: provider.isLoading && !provider.isEditing
+          ? Center(child: CircularProgressIndicator(color: theme.primaryColor))
+          : Container(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: [
+                    theme.primaryColor,
+                    theme.colorScheme.secondary,
+                    AppTheme.accentColor,
                   ],
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(AppTheme.spacingL),
-                  child: _isEditing 
-                    ? ProfileEditForm(
-                        nameController: _nameController,
-                        bioController: _bioController,
-                        oldPasswordController: _oldPasswordController,
-                        newPasswordController: _newPasswordController,
-                        confirmPasswordController: _confirmPasswordController,
-                        isLoading: _isLoading,
-                        onSave: _saveProfile,
-                        onCancel: () {
-                          setState(() {
-                            _isEditing = false;
-                            _oldPasswordController.clear();
-                            _newPasswordController.clear();
-                            _confirmPasswordController.clear();
-                          });
-                        },
-                        user: widget.user,
-                      )
-                    : ProfileContent(
-                        bio: bio,
-                        totalTransactions: totalTransactions,
-                        incomeCount: incomeCount,
-                        expenseCount: expenseCount,
-                        isLoading: _isLoading,
-                        onEdit: () {
-                          setState(() {
-                            _isEditing = true;
-                          });
-                        },
-                        onDeleteAccount: _confirmDeleteAccount,
-                        onShowMigrationDialog: _showMigrationDialog,
-                        user: widget.user,
-                      ),
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
               ),
-            ],
-          ),
-        ),
-      ),
+              child: SafeArea(
+                child: SingleChildScrollView(
+                  child: Column(
+                    children: [
+                      // Cabecera con foto, nombre y correo
+                      ProfileHeader(
+                        user: user,
+                        name: provider.name,
+                        email: provider.email,
+                        avatarUrl: provider.avatarUrl,
+                        setLoading: provider.setLoading,
+                        refreshProfile: provider.refreshProfile,
+                      ),
+                      
+                      // Contenido principal
+                      Container(
+                        width: double.infinity,
+                        decoration: BoxDecoration(
+                          color: isDarkMode ? AppTheme.darkCardColor : AppTheme.cardColor,
+                          borderRadius: const BorderRadius.only(
+                            topLeft: Radius.circular(AppTheme.radiusXL),
+                            topRight: Radius.circular(AppTheme.radiusXL),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.1),
+                              spreadRadius: 1,
+                              blurRadius: 10,
+                              offset: const Offset(0, -5),
+                            ),
+                          ],
+                        ),
+                        child: Padding(
+                          padding: const EdgeInsets.all(AppTheme.spacingL),
+                          child: provider.isEditing 
+                            ? ProfileEditForm()
+                            : ProfileContent(
+                                bio: provider.bio,
+                                totalTransactions: provider.totalTransactions,
+                                incomeCount: provider.incomeCount,
+                                expenseCount: provider.expenseCount,
+                                isLoading: provider.isLoading,
+                                onEdit: provider.setEditing,
+                                onDeleteAccount: () => _confirmDeleteAccount(context, provider),
+                                onShowMigrationDialog: () => _showMigrationDialog(context),
+                                user: user,
+                              ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
     );
   }
-
-  void _showMigrationDialog() {
+  
+  // Mostrar diálogo de migración
+  void _showMigrationDialog(BuildContext context) {
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (context) => MigrationDialog(
-        userId: widget.user.uid,
-        onComplete: _refreshProfile,
+        userId: user.uid,
+        onComplete: () {
+          final provider = Provider.of<ProfileProvider>(context, listen: false);
+          provider.refreshProfile();
+        },
       ),
     );
   }
-
-  Future<void> _saveProfile() async {
-    _setLoading(true);
-
-    try {
-      // Actualizar datos básicos
-      await _profileService.updateUserProfile(widget.user.uid, {
-        'name': _nameController.text.trim(),
-        'bio': _bioController.text.trim(),
-      });
-
-      // Cambiar contraseña si es necesario
-      if (_newPasswordController.text.isNotEmpty) {
-        if (_newPasswordController.text != _confirmPasswordController.text) {
-          throw Exception("Las contraseñas no coinciden");
-        }
-
-        if (_oldPasswordController.text.isEmpty) {
-          throw Exception("Debes ingresar tu contraseña actual");
-        }
-
-        await _profileService.changePassword(
-          widget.user,
-          _oldPasswordController.text,
-          _newPasswordController.text,
-        );
+  
+  // Confirmar eliminación de cuenta
+  void _confirmDeleteAccount(BuildContext context, ProfileProvider provider) {
+    ErrorHandler.showConfirmationDialog(
+      context,
+      title: "Eliminar Cuenta",
+      message: "¿Estás seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer y perderás todos tus datos.",
+      confirmText: "Eliminar",
+      cancelText: "Cancelar",
+      confirmColor: AppTheme.errorColor,
+    ).then((confirmed) {
+      if (confirmed) {
+        _deleteAccount(context, provider);
       }
-
-      if (mounted) {
-        setState(() {
-          _isEditing = false;
-          _oldPasswordController.clear();
-          _newPasswordController.clear();
-          _confirmPasswordController.clear();
-        });
-
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Perfil actualizado correctamente"),
-            backgroundColor: AppTheme.successColor,
-          ),
-        );
+    });
+  }
+  
+  // Eliminar cuenta
+  Future<void> _deleteAccount(BuildContext context, ProfileProvider provider) async {
+    // Para usuarios de Google, no se necesita reautenticación con contraseña
+    if (user.providerData.any((provider) => provider.providerId == 'password')) {
+      // Solo mostrar diálogo de reautenticación para usuarios con contraseña
+      final password = await _showReauthDialog(context);
+      if (password == null) {
+        return;
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error: ${e.toString()}"),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
-    } finally {
-      _setLoading(false);
+      
+      ErrorHandler.handleFutureWithLoading(
+        () => provider.deleteAccount(password),
+        context,
+        loadingMessage: 'Eliminando cuenta...',
+        successMessage: 'Cuenta eliminada correctamente',
+        onSuccess: (_) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        },
+      );
+    } else {
+      // Para usuarios de Google, eliminar directamente
+      ErrorHandler.handleFutureWithLoading(
+        () => provider.deleteAccount(''),
+        context,
+        loadingMessage: 'Eliminando cuenta...',
+        successMessage: 'Cuenta eliminada correctamente',
+        onSuccess: (_) {
+          Navigator.of(context).popUntil((route) => route.isFirst);
+        },
+      );
     }
   }
-
-  void _confirmDeleteAccount() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text("Eliminar Cuenta"),
-        content: const Text(
-          "¿Estás seguro de que deseas eliminar tu cuenta? Esta acción no se puede deshacer y perderás todos tus datos.",
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text("Cancelar"),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              Navigator.of(context).pop();
-              _deleteAccount();
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.errorColor,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text("Eliminar"),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _deleteAccount() async {
-    _setLoading(true);
-
-    try {
-      // Para usuarios de Google, no se necesita reautenticación con contraseña
-      if (widget.user.providerData.any((provider) => provider.providerId == 'password')) {
-        // Solo mostrar diálogo de reautenticación para usuarios con contraseña
-        final password = await _showReauthDialog();
-        if (password == null) {
-          _setLoading(false);
-          return;
-        }
-        await _profileService.deleteAccount(widget.user, password);
-      } else {
-        // Para usuarios de Google, eliminar directamente
-        await _profileService.deleteAccount(widget.user, '');
-      }
-
-      if (mounted) {
-        Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error al eliminar la cuenta: ${e.toString()}"),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
-    } finally {
-      _setLoading(false);
-    }
-  }
-
-  Future<String?> _showReauthDialog() async {
+  
+  // Mostrar diálogo de reautenticación
+  Future<String?> _showReauthDialog(BuildContext context) async {
     return showDialog<String>(
       context: context,
       barrierDismissible: false,
@@ -445,22 +250,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
       },
     );
   }
-
-  void _logout() async {
-    try {
-      await _profileService.signOut();
-      if (mounted) {
+  
+  // Cerrar sesión
+  Future<void> _logout(BuildContext context, ProfileProvider provider) async {
+    ErrorHandler.handleFutureWithLoading(
+      () => provider.signOut(),
+      context,
+      loadingMessage: 'Cerrando sesión...',
+      onSuccess: (_) {
         Navigator.of(context).popUntil((route) => route.isFirst);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text("Error al cerrar sesión: ${e.toString()}"),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
-    }
+      },
+    );
   }
 }

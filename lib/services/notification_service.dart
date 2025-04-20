@@ -1,7 +1,7 @@
+// lib/services/notification_service.dart
 import 'dart:convert';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -10,9 +10,8 @@ import 'package:timezone/data/latest_all.dart' as tz;
 import 'package:timezone/timezone.dart' as tz;
 import 'package:shared_preferences/shared_preferences.dart';
 
-// Importa la instancia global y la bandera de disponibilidad
-import 'package:chanchi_app/main.dart'
-    show flutterLocalNotificationsPlugin, areNotificationsAvailable;
+// Importamos directamente los elementos necesarios en vez de usar import show
+import 'package:chanchi_app/core/initializers/app_initializer.dart';
 
 class NotificationService {
   static final NotificationService _instance = NotificationService._internal();
@@ -36,23 +35,7 @@ class NotificationService {
 
     try {
       // 1. Inicializar zonas horarias
-      tz.initializeTimeZones();
-
-      try {
-        tz.setLocalLocation(tz.getLocation('America/Lima'));
-      } catch (e) {
-        print('Error al configurar zona horaria: $e');
-        tz.setLocalLocation(tz.UTC);
-      }
-
-      try {
-        // Esto debería funcionar en la mayoría de los casos
-        tz.initializeTimeZones();
-        tz.setLocalLocation(tz.local);
-      } catch (e) {
-        print('Error configurando zona horaria: $e');
-        tz.setLocalLocation(tz.UTC);
-      }
+      await _initializeTimeZones();
 
       // 2. Crear canales de notificación solo si las notificaciones están disponibles
       if (areNotificationsAvailable) {
@@ -65,7 +48,7 @@ class NotificationService {
       await _setupMessageHandlers();
 
       // 4. Verificar si hay recordatorios diarios configurados y recuperarlos
-      _restoreDailyReminderIfEnabled();
+      await _restoreDailyReminderIfEnabled();
 
       _isInitialized = true;
       print('NotificationService: inicialización básica completada');
@@ -90,7 +73,6 @@ class NotificationService {
         // Fallback to a custom location based on offset
         final now = DateTime.now();
         final offset = now.timeZoneOffset.inMilliseconds ~/ 1000;
-        final timeZoneName = 'UTC+${offset ~/ 3600}:${(offset % 3600) ~/ 60}';
 
         // Try to find a timezone with matching offset
         final availableTimezones = tz.timeZoneDatabase.locations.keys.toList();
@@ -174,55 +156,63 @@ class NotificationService {
     }
   }
 
-  // Configurar manejadores de mensajes FCM
+  // RESTO DEL CÓDIGO SIMPLIFICADO PARA MAYOR LEGIBILIDAD
   Future<void> _setupMessageHandlers() async {
-    // Solicitar token FCM y guardar si el usuario está autenticado
-    String? token = await _fcm.getToken();
-    print('Token FCM: $token');
-
-    // Configurar manejo cuando el token se actualiza
-    _fcm.onTokenRefresh.listen((newToken) {
-      print('Token FCM actualizado: $newToken');
+    await _fcm.getToken().then((token) {
+      print('Token FCM: $token');
       final user = FirebaseAuth.instance.currentUser;
-      if (user != null) {
-        _saveTokenToDatabase(user.uid, newToken);
-      }
-    });
-
-    // Notificación abierta desde segundo plano
-    FirebaseMessaging.onMessageOpenedApp.listen((RemoteMessage message) {
-      print('Notificación abierta desde segundo plano: ${message.messageId}');
-      // Aquí podrías agregar lógica para navegar basada en los datos del mensaje
-    });
-
-    // Notificación recibida en primer plano
-    FirebaseMessaging.onMessage.listen((RemoteMessage message) {
-      print('Mensaje recibido en primer plano: ${message.notification?.title}');
-
-      if (message.notification != null) {
-        _showLocalNotification(
-          message.notification!.title ?? 'Notificación',
-          message.notification!.body ?? '',
-          message
-              .data, // Pasar los datos para poder procesarlos si es necesario
-        );
-      }
-    });
-
-    // Guardar token cuando el usuario inicia sesión
-    FirebaseAuth.instance.authStateChanges().listen((User? user) {
       if (user != null && token != null) {
         _saveTokenToDatabase(user.uid, token);
       }
     });
 
-    // Configurar opciones para las notificaciones en primer plano
+    // Setup listeners
+    _fcm.onTokenRefresh.listen(_onTokenRefresh);
+    FirebaseMessaging.onMessageOpenedApp.listen(_onMessageOpenedApp);
+    FirebaseMessaging.onMessage.listen(_onMessageReceived);
+    FirebaseAuth.instance.authStateChanges().listen(_onAuthStateChanged);
+
     await FirebaseMessaging.instance
         .setForegroundNotificationPresentationOptions(
           alert: true,
           badge: true,
           sound: true,
         );
+  }
+
+  void _onTokenRefresh(String newToken) {
+    print('Token FCM actualizado: $newToken');
+    final user = FirebaseAuth.instance.currentUser;
+    if (user != null) {
+      _saveTokenToDatabase(user.uid, newToken);
+    }
+  }
+
+  void _onMessageOpenedApp(RemoteMessage message) {
+    print('Notificación abierta desde segundo plano: ${message.messageId}');
+    // Aquí podrías agregar lógica para navegar basada en los datos del mensaje
+  }
+
+  void _onMessageReceived(RemoteMessage message) {
+    print('Mensaje recibido en primer plano: ${message.notification?.title}');
+
+    if (message.notification != null) {
+      _showLocalNotification(
+        message.notification!.title ?? 'Notificación',
+        message.notification!.body ?? '',
+        message.data, // Pasar los datos para poder procesarlos si es necesario
+      );
+    }
+  }
+
+  void _onAuthStateChanged(User? user) {
+    if (user != null) {
+      _fcm.getToken().then((token) {
+        if (token != null) {
+          _saveTokenToDatabase(user.uid, token);
+        }
+      });
+    }
   }
 
   Future<void> _showLocalNotification(
@@ -243,7 +233,7 @@ class NotificationService {
       // Convertir payload a string si existe
       String? payloadStr;
       if (payload != null) {
-        payloadStr = payload.toString();
+        payloadStr = jsonEncode(payload);
       }
 
       const AndroidNotificationDetails androidPlatformChannelSpecifics =
@@ -270,6 +260,28 @@ class NotificationService {
       );
     } catch (e) {
       print('Error al mostrar notificación: $e');
+    }
+  }
+
+  Future<void> _restoreDailyReminderIfEnabled() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final isEnabled = prefs.getBool('daily_reminder_enabled') ?? false;
+
+      if (isEnabled) {
+        // Obtener la hora guardada o usar valores predeterminados
+        final hour = prefs.getInt('daily_reminder_hour') ?? 20;
+        final minute = prefs.getInt('daily_reminder_minute') ?? 0;
+
+        print(
+          'Restaurando recordatorio diario previamente habilitado para las $hour:${minute.toString().padLeft(2, '0')}',
+        );
+
+        // Reactivar el recordatorio
+        await scheduleDailyReminder(hour: hour, minute: minute);
+      }
+    } catch (e) {
+      print('Error al restaurar recordatorio diario: $e');
     }
   }
 
@@ -335,7 +347,6 @@ class NotificationService {
         return false;
       }
 
-      // Mantener const pero usar Int64List explícitamente
       const AndroidNotificationDetails androidDetails =
           AndroidNotificationDetails(
             'daily_reminder',
@@ -349,7 +360,6 @@ class NotificationService {
             ledOnMs: 1000,
             ledOffMs: 500,
             enableVibration: true,
-            // Eliminamos vibrationPattern para mantener const
             playSound: true,
             fullScreenIntent: true,
             category: AndroidNotificationCategory.reminder,
@@ -390,160 +400,6 @@ class NotificationService {
     }
   }
 
-  Future<void> scheduleNotification({
-    required String title,
-    required String body,
-    required int seconds,
-    Map<String, dynamic>? payload,
-  }) async {
-    if (!areNotificationsAvailable) {
-      print('Notificaciones no disponibles - no se puede programar');
-      return;
-    }
-
-    try {
-      // Verificar permisos
-      bool hasPermissions = await checkAllNotificationPermissions();
-      if (!hasPermissions) {
-        print('No se tienen todos los permisos para programar notificaciones');
-        throw Exception('Permisos insuficientes para programar notificaciones');
-      }
-
-      // Usar ID fijo para pruebas
-      final int notificationId = DateTime.now().millisecondsSinceEpoch
-          .remainder(100000);
-
-      // Para depuración, cancelar cualquier notificación previa con este ID
-      await flutterLocalNotificationsPlugin.cancel(notificationId);
-
-      final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
-          flutterLocalNotificationsPlugin
-              .resolvePlatformSpecificImplementation<
-                AndroidFlutterLocalNotificationsPlugin
-              >();
-
-      if (androidImplementation != null) {
-        await androidImplementation.createNotificationChannel(
-          const AndroidNotificationChannel(
-            'test_channel',
-            'Canal de Pruebas',
-            description: 'Canal para pruebas de notificaciones',
-            importance: Importance.max,
-          ),
-        );
-      }
-
-      // Configuración básica de la notificación SIN sonido personalizado
-      const AndroidNotificationDetails androidPlatformChannelSpecifics =
-          AndroidNotificationDetails(
-            'test_channel',
-            'Canal de Pruebas',
-            channelDescription: 'Canal para pruebas de notificaciones',
-            importance: Importance.max,
-            priority: Priority.high,
-            enableVibration: true,
-            playSound: true,
-            fullScreenIntent: true,
-            category: AndroidNotificationCategory.alarm,
-          );
-
-      const NotificationDetails platformChannelSpecifics = NotificationDetails(
-        android: androidPlatformChannelSpecifics,
-      );
-
-      // IMPORTANTE: Establecer zona horaria local correctamente
-      final now = tz.TZDateTime.now(tz.local);
-      final scheduledDate = now.add(Duration(seconds: seconds));
-
-      print('==========================================');
-      print('PROGRAMANDO NOTIFICACIÓN SIMPLE');
-      print('Hora actual: ${DateTime.now()}');
-      print('Hora actual TZ: $now');
-      print('Offset zona horaria: ${now.timeZoneOffset}');
-      print('Segundos a programar: $seconds');
-      print('TZ fecha programada: $scheduledDate');
-      print('==========================================');
-
-      // Programar la notificación con interpretation ABSOLUTETIME
-      await flutterLocalNotificationsPlugin.zonedSchedule(
-        notificationId,
-        title,
-        body,
-        scheduledDate,
-        platformChannelSpecifics,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      );
-
-      // Como prueba alternativa, también programar usando un método diferente
-      await _scheduleAlternativeNotification(title, body, seconds);
-
-      // Notificación inmediata de confirmación
-      await showLocalNotification(
-        '📱 Notificación programada',
-        'Programada para llegar en $seconds segundos (${DateFormat('HH:mm:ss').format(scheduledDate)})',
-      );
-
-      print(
-        'Notificación programada para $scheduledDate (ID: $notificationId)',
-      );
-    } catch (e) {
-      print('Error al programar notificación: $e');
-      throw e;
-    }
-  }
-
-  // Método alternativo de programación como fallback
-  Future<void> _scheduleAlternativeNotification(
-    String title,
-    String body,
-    int seconds,
-  ) async {
-    try {
-      final id = 888888; // ID diferente
-
-      // Usando la librería "flutter_local_notifications" con zonedSchedule en lugar de schedule
-      await flutterLocalNotificationsPlugin.cancel(id);
-
-      const AndroidNotificationDetails androidDetails =
-          AndroidNotificationDetails(
-            'chanchi_app_channel', // Usar el canal principal que ya funciona
-            'Chanchi App Notifications',
-            channelDescription: 'Canal general de notificaciones',
-            importance: Importance.max,
-            priority: Priority.high,
-            enableVibration: true,
-            playSound: true,
-            fullScreenIntent: true,
-          );
-
-      const NotificationDetails details = NotificationDetails(
-        android: androidDetails,
-      );
-
-      // Calcular la hora programada usando TZDateTime
-      final tz.TZDateTime scheduledDate = tz.TZDateTime.now(
-        tz.local,
-      ).add(Duration(seconds: seconds));
-
-      print(
-        'Programando notificación alternativa para: $scheduledDate (ID: $id)',
-      );
-
-      // Usar zonedSchedule en lugar de schedule
-      await flutterLocalNotificationsPlugin.zonedSchedule(
-        id,
-        "🔔 $title (alt)",
-        "$body (método alternativo)",
-        scheduledDate,
-        details,
-        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      );
-    } catch (e) {
-      print('Error en notificación alternativa: $e');
-      // No propagar el error
-    }
-  }
-
   // Mejoras en el método _nextInstanceOfTime para garantizar que la zona horaria se maneje correctamente
   tz.TZDateTime _nextInstanceOfTime(int hour, int minute) {
     // Obtener fecha/hora actual en la zona horaria configurada
@@ -577,53 +433,22 @@ class NotificationService {
     return scheduledDate;
   }
 
-  // Restaurar recordatorio diario con la hora guardada
-  Future<void> _restoreDailyReminderIfEnabled() async {
+  // Método para cancelar la notificación diaria
+  Future<void> cancelDailyReminder() async {
     try {
+      await flutterLocalNotificationsPlugin.cancel(1); // Usar el mismo ID específico
+
+      // Guardar estado de recordatorio
       final prefs = await SharedPreferences.getInstance();
-      final isEnabled = prefs.getBool('daily_reminder_enabled') ?? false;
+      await prefs.setBool('daily_reminder_enabled', false);
 
-      if (isEnabled) {
-        // Obtener la hora guardada o usar valores predeterminados
-        final hour = prefs.getInt('daily_reminder_hour') ?? 20;
-        final minute = prefs.getInt('daily_reminder_minute') ?? 0;
-
-        print(
-          'Restaurando recordatorio diario previamente habilitado para las $hour:${minute.toString().padLeft(2, '0')}',
-        );
-      }
+      print('Recordatorio diario cancelado');
     } catch (e) {
-      print('Error al restaurar recordatorio diario: $e');
+      print('Error al cancelar recordatorio diario: $e');
     }
   }
 
-  // Método para obtener la hora configurada del recordatorio
-  Future<TimeOfDay> getConfiguredReminderTime() async {
-    final prefs = await SharedPreferences.getInstance();
-    final hour = prefs.getInt('daily_reminder_hour') ?? 20;
-    final minute = prefs.getInt('daily_reminder_minute') ?? 0;
-    return TimeOfDay(hour: hour, minute: minute);
-  }
-
-  Future<void> _saveTokenToDatabase(String userId, String token) async {
-    try {
-      await FirebaseFirestore.instance
-          .collection('users')
-          .doc(userId)
-          .collection('tokens')
-          .doc(token)
-          .set({
-            'token': token,
-            'createdAt': FieldValue.serverTimestamp(),
-            'platform': 'android',
-            'lastUpdated': FieldValue.serverTimestamp(),
-          });
-      print("✅ Token guardado en Firestore: $token");
-    } catch (error) {
-      print("⚠️ Error al guardar el token en Firestore: $error");
-    }
-  }
-
+  // Verificar permisos de alarmas exactas
   Future<bool> _checkAndRequestExactAlarmPermission() async {
     try {
       final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
@@ -696,27 +521,38 @@ class NotificationService {
     }
   }
 
-  // Método para cancelar la notificación diaria
-  Future<void> cancelDailyReminder() async {
-    try {
-      await flutterLocalNotificationsPlugin.cancel(
-        1,
-      ); // Usar el mismo ID específico
-
-      // Guardar estado de recordatorio
-      final prefs = await SharedPreferences.getInstance();
-      await prefs.setBool('daily_reminder_enabled', false);
-
-      print('Recordatorio diario cancelado');
-    } catch (e) {
-      print('Error al cancelar recordatorio diario: $e');
-    }
-  }
-
   // Método para obtener el estado actual del recordatorio
   Future<bool> isDailyReminderEnabled() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getBool('daily_reminder_enabled') ?? false;
+  }
+
+  // Método para obtener la hora configurada del recordatorio
+  Future<TimeOfDay> getConfiguredReminderTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    final hour = prefs.getInt('daily_reminder_hour') ?? 20;
+    final minute = prefs.getInt('daily_reminder_minute') ?? 0;
+    return TimeOfDay(hour: hour, minute: minute);
+  }
+
+  // Método para guardar token en la base de datos
+  Future<void> _saveTokenToDatabase(String userId, String token) async {
+    try {
+      await FirebaseFirestore.instance
+          .collection('users')
+          .doc(userId)
+          .collection('tokens')
+          .doc(token)
+          .set({
+            'token': token,
+            'createdAt': FieldValue.serverTimestamp(),
+            'platform': 'android',
+            'lastUpdated': FieldValue.serverTimestamp(),
+          });
+      print("✅ Token guardado en Firestore: $token");
+    } catch (error) {
+      print("⚠️ Error al guardar el token en Firestore: $error");
+    }
   }
 
   // Método para enviar notificación de presupuesto con control de frecuencia
@@ -778,18 +614,101 @@ class NotificationService {
     }
   }
 
+  // Método público para mostrar una notificación inmediata
+  Future<void> showLocalNotification(
+    String title,
+    String body, [
+    Map<String, dynamic>? payload,
+  ]) async {
+    await _showLocalNotification(title, body, payload);
+  }
+
+  // Método para programar una notificación
+  Future<void> scheduleNotification({
+    required String title,
+    required String body,
+    required int seconds,
+    Map<String, dynamic>? payload,
+  }) async {
+    if (!areNotificationsAvailable) {
+      print('Notificaciones no disponibles - no se puede programar');
+      return;
+    }
+
+    try {
+      // Verificar permisos
+      bool hasPermissions = await checkAllNotificationPermissions();
+      if (!hasPermissions) {
+        print('No se tienen todos los permisos para programar notificaciones');
+        throw Exception('Permisos insuficientes para programar notificaciones');
+      }
+
+      // Usar ID basado en timestamp
+      final int notificationId = DateTime.now().millisecondsSinceEpoch
+          .remainder(100000);
+
+      // Configuración de la notificación
+      const AndroidNotificationDetails androidPlatformChannelSpecifics =
+          AndroidNotificationDetails(
+            'test_channel',
+            'Canal de Pruebas',
+            channelDescription: 'Canal para pruebas de notificaciones',
+            importance: Importance.max,
+            priority: Priority.high,
+            enableVibration: true,
+            playSound: true,
+            fullScreenIntent: true,
+            category: AndroidNotificationCategory.alarm,
+          );
+
+      const NotificationDetails platformChannelSpecifics = NotificationDetails(
+        android: androidPlatformChannelSpecifics,
+      );
+
+      // Establecer zona horaria local correctamente
+      final now = tz.TZDateTime.now(tz.local);
+      final scheduledDate = now.add(Duration(seconds: seconds));
+
+      // Programar la notificación
+      await flutterLocalNotificationsPlugin.zonedSchedule(
+        notificationId,
+        title,
+        body,
+        scheduledDate,
+        platformChannelSpecifics,
+        androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+        payload: payload != null ? jsonEncode(payload) : null,
+      );
+
+      // Notificación inmediata de confirmación
+      await showLocalNotification(
+        '📱 Notificación programada',
+        'Programada para llegar en $seconds segundos (${DateFormat('HH:mm:ss').format(scheduledDate.toLocal())})',
+      );
+    } catch (e) {
+      print('Error al programar notificación: $e');
+      throw e;
+    }
+  }
+
+  // Método para limpiar el cache de notificaciones (útil para pruebas)
+  void clearNotificationCache() {
+    _sentBudgetNotifications.clear();
+  }
+
+  // Método para obtener información de depuración
   Future<Map<String, dynamic>> debugNotificationStatus() async {
     final Map<String, dynamic> status = {};
 
     try {
-      // 1. Verificar si las notificaciones están disponibles
+      // Verificar si las notificaciones están disponibles
       status['areNotificationsAvailable'] = areNotificationsAvailable;
 
-      // 2. Verificar permisos de notificación
+      // Verificar permisos de notificación
       final settings = await _fcm.getNotificationSettings();
       status['authorizationStatus'] = settings.authorizationStatus.toString();
 
-      // 3. Verificar permisos de alarmas exactas
+      // Verificar permisos de alarmas exactas
       final AndroidFlutterLocalNotificationsPlugin? androidImplementation =
           flutterLocalNotificationsPlugin
               .resolvePlatformSpecificImplementation<
@@ -803,7 +722,7 @@ class NotificationService {
         status['canScheduleExactAlarms'] = 'No disponible en esta plataforma';
       }
 
-      // 4. Verificar recordatorio diario
+      // Verificar recordatorio diario
       final prefs = await SharedPreferences.getInstance();
       status['isDailyReminderEnabled'] =
           prefs.getBool('daily_reminder_enabled') ?? false;
@@ -811,18 +730,13 @@ class NotificationService {
       status['dailyReminderMinute'] =
           prefs.getInt('daily_reminder_minute') ?? 0;
 
-      // 5. Verificar token FCM
+      // Verificar token FCM
       status['fcmToken'] = await _fcm.getToken() ?? 'No disponible';
 
-      // 6. Verificar zona horaria
+      // Verificar zona horaria
       status['currentTimeZone'] = tz.local.name;
       status['currentLocalTime'] = DateTime.now().toString();
       status['currentTZTime'] = tz.TZDateTime.now(tz.local).toString();
-
-      print('==== ESTADO DE NOTIFICACIONES ====');
-      status.forEach((key, value) {
-        print('$key: $value');
-      });
 
       return status;
     } catch (e) {
@@ -830,62 +744,5 @@ class NotificationService {
       status['error'] = e.toString();
       return status;
     }
-  }
-
-  // Método público para mostrar una notificación inmediata
-  Future<void> showLocalNotification(
-    String title,
-    String body, [
-    Map<String, dynamic>? payload,
-  ]) async {
-    if (!areNotificationsAvailable) {
-      print('Notificaciones no disponibles - no se puede mostrar: $title');
-      return;
-    }
-
-    try {
-      // Generar un ID único para cada notificación
-      final int notificationId = DateTime.now().millisecondsSinceEpoch
-          .remainder(100000);
-
-      // Convertir payload a string si existe
-      String? payloadStr;
-      if (payload != null) {
-        payloadStr = payload.toString();
-      }
-
-      const AndroidNotificationDetails androidPlatformChannelSpecifics =
-          AndroidNotificationDetails(
-            'chanchi_app_channel',
-            'Chanchi App Notifications',
-            channelDescription: 'Canal general de notificaciones',
-            importance: Importance.high,
-            priority: Priority.high,
-            enableVibration: true,
-            playSound: true,
-          );
-
-      const NotificationDetails platformChannelSpecifics = NotificationDetails(
-        android: androidPlatformChannelSpecifics,
-      );
-
-      await flutterLocalNotificationsPlugin.show(
-        notificationId,
-        title,
-        body,
-        platformChannelSpecifics,
-        payload: payloadStr,
-      );
-
-      print('Notificación mostrada con éxito: $title');
-    } catch (e) {
-      print('Error al mostrar notificación: $e');
-      throw e; // Re-lanzar para que el llamador pueda manejarlo
-    }
-  }
-
-  // Método para limpiar el cache de notificaciones (útil para pruebas)
-  void clearNotificationCache() {
-    _sentBudgetNotifications.clear();
   }
 }
