@@ -19,7 +19,10 @@ class AccountsList extends StatelessWidget {
       children: [
         Text(
           "Cuentas Principales",
-          style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.textPrimaryColor, fontWeight: FontWeight.bold),
+          style: Theme.of(context).textTheme.titleSmall?.copyWith(
+            color: AppTheme.textPrimaryColor,
+            fontWeight: FontWeight.bold,
+          ),
         ),
         const SizedBox(height: AppTheme.spacingM),
         Container(
@@ -29,59 +32,78 @@ class AccountsList extends StatelessWidget {
           ),
           padding: const EdgeInsets.all(AppTheme.spacingM),
           child: Column(
-            children: accounts.map((account) {
-              final balance = (account['balance'] ?? 0.0).toDouble();
-              final isPositive = balance >= 0;
-              return Column(
-                children: [
-                  Row(
+            children:
+                accounts.map((account) {
+                  final balance = (account['balance'] ?? 0.0).toDouble();
+                  final isPositive = balance >= 0;
+                  return Column(
                     children: [
-                      Container(
-                        width: 40,
-                        height: 40,
-                        decoration: BoxDecoration(
-                          color: _getAccountColor(account).withOpacity(0.1),
-                          borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                        ),
-                        child: Icon(
-                          _getAccountIcon(account['iconName']),
-                          color: _getAccountColor(account),
-                          size: 20,
-                        ),
-                      ),
-                      const SizedBox(width: AppTheme.spacingM),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              account['name'] ?? 'Sin nombre',
-                              style: Theme.of(context).textTheme.titleSmall?.copyWith(color: AppTheme.textPrimaryColor),
+                      Row(
+                        children: [
+                          Container(
+                            width: 40,
+                            height: 40,
+                            decoration: BoxDecoration(
+                              color: _getAccountColor(account).withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(
+                                AppTheme.radiusM,
+                              ),
                             ),
-                            Text(
-                              "${account['type'] ?? ''} - ${account['institution'] ?? ''}",
-                              style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.textSecondaryColor),
+                            child: Icon(
+                              _getAccountIcon(account['iconName']),
+                              color: _getAccountColor(account),
+                              size: 20,
                             ),
-                          ],
-                        ),
+                          ),
+                          const SizedBox(width: AppTheme.spacingM),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  account['name'] ?? 'Sin nombre',
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.titleSmall?.copyWith(
+                                    color: AppTheme.textPrimaryColor,
+                                  ),
+                                ),
+                                Text(
+                                  "${account['type'] ?? ''} - ${account['institution'] ?? ''}",
+                                  style: Theme.of(
+                                    context,
+                                  ).textTheme.bodySmall?.copyWith(
+                                    color: AppTheme.textSecondaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Text(
+                            isBalanceHidden
+                                ? "S/•••.••"
+                                : CurrencyUtil.format(
+                                  amount: balance,
+                                  currencyCode:
+                                      account['currencyCode'] ?? 'PEN',
+                                ),
+                            style: Theme.of(
+                              context,
+                            ).textTheme.titleSmall?.copyWith(
+                              color:
+                                  isPositive
+                                      ? AppTheme.successColor
+                                      : AppTheme.errorColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
-                      Text(
-                        isBalanceHidden ? "S/•••.••" : CurrencyUtil.format(amount: balance, currencyCode: account['currencyCode'] ?? 'PEN'),
-                        style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                          color: isPositive ? AppTheme.successColor : AppTheme.errorColor,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
+                      if (account != accounts.last)
+                        Divider(color: Colors.grey.shade300, height: 24),
                     ],
-                  ),
-                  if (account != accounts.last)
-                    Divider(
-                      color: Colors.grey.shade300,
-                      height: 24,
-                    ),
-                ],
-              );
-            }).toList(),
+                  );
+                }).toList(),
           ),
         ),
       ],

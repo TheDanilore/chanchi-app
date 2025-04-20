@@ -3,6 +3,7 @@ import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/core/config/theme_manager.dart';
 import 'package:chanchi_app/core/initializers/app_initializer.dart';
 import 'package:chanchi_app/features/pages/splash_screen.dart';
+import 'package:chanchi_app/services/notification_service.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -13,7 +14,7 @@ void main() async {
   try {
     // Inicializar la aplicación
     final initialized = await AppInitializer.initialize();
-    
+
     if (initialized) {
       runApp(const MyApp());
     } else {
@@ -48,9 +49,7 @@ void main() async {
     runApp(
       MaterialApp(
         home: Scaffold(
-          body: Center(
-            child: Text('Error al iniciar la aplicación: $e'),
-          ),
+          body: Center(child: Text('Error al iniciar la aplicación: $e')),
         ),
       ),
     );
@@ -66,19 +65,19 @@ class MyApp extends StatefulWidget {
 
 class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   ThemeData _themeData = AppTheme.lightTheme;
-  
+
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
   }
-  
+
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
-  
+
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
@@ -96,7 +95,10 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
-        // Aquí puedes añadir tus providers
+        // Añade al menos un provider
+        Provider<NotificationService>(create: (_) => NotificationService()),
+        // O si no tienes ningún provider disponible, puedes crear uno temporal:
+        Provider<String>(create: (_) => 'dummy'),
       ],
       child: ThemeManager(
         themeData: _themeData,

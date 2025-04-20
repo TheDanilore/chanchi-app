@@ -127,31 +127,37 @@ class _HomeBodyState extends State<HomeBody> {
               // Indicador de modo sin conexión
               if (widget.isOffline && widget.pendingOperationsCount > 0)
                 SliverToBoxAdapter(
-                  child: OfflineIndicatorWidget(
-                    isOffline: widget.isOffline,
-                    isSyncing: widget.isSyncing,
-                    pendingOperationsCount: widget.pendingOperationsCount,
-                    onSyncPressed: widget.onSyncPressed,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                    child: OfflineIndicatorWidget(
+                      isOffline: widget.isOffline,
+                      isSyncing: widget.isSyncing,
+                      pendingOperationsCount: widget.pendingOperationsCount,
+                      onSyncPressed: widget.onSyncPressed,
+                    ),
                   ),
                 ),
 
               // Selector de mes
               SliverToBoxAdapter(
-                child: MonthSelectorWidget(
-                  selectedMonth: widget.selectedMonth,
-                  onMonthChanged: widget.onMonthChanged,
-                  onPreviousMonth: _goToPreviousMonth,
-                  onNextMonth: _goToNextMonth,
-                  canGoNext: widget.selectedMonth.isBefore(
-                    DateTime(DateTime.now().year, DateTime.now().month + 1),
-                  ),
-                  style: MonthSelectorStyle(
-                    selectedMonthStyle: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppTheme.primaryColor,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(12.0, 8.0, 12.0, 8.0),
+                  child: MonthSelectorWidget(
+                    selectedMonth: widget.selectedMonth,
+                    onMonthChanged: widget.onMonthChanged,
+                    onPreviousMonth: _goToPreviousMonth,
+                    onNextMonth: _goToNextMonth,
+                    canGoNext: widget.selectedMonth.isBefore(
+                      DateTime(DateTime.now().year, DateTime.now().month + 1),
                     ),
-                    arrowColor: AppTheme.primaryColor,
+                    style: MonthSelectorStyle(
+                      selectedMonthStyle: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppTheme.primaryColor,
+                      ),
+                      arrowColor: AppTheme.primaryColor,
+                    ),
                   ),
                 ),
               ),
@@ -159,84 +165,8 @@ class _HomeBodyState extends State<HomeBody> {
               // Resumen Financiero
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.all(AppTheme.spacingL),
-                  child: Column(
-                    children: [
-                      // Cabecera de Resumen Financiero
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "Resumen Financiero",
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          IconButton(
-                            icon: Icon(
-                              _showFinancialSummary
-                                  ? Icons.keyboard_arrow_up
-                                  : Icons.keyboard_arrow_down,
-                              color: AppTheme.textSecondaryColor,
-                            ),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
-                            onPressed: () {
-                              setState(() {
-                                _showFinancialSummary = !_showFinancialSummary;
-                              });
-                            },
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: AppTheme.spacingS),
-
-                      // Widget de resumen financiero
-                      AnimatedCrossFade(
-                        duration: const Duration(milliseconds: 300),
-                        crossFadeState: _showFinancialSummary
-                            ? CrossFadeState.showFirst
-                            : CrossFadeState.showSecond,
-                        firstChild: FinancialSummaryDashboard(
-                          userId: widget.userId,
-                          selectedMonth: widget.selectedMonth,
-                          onNavigateToTab: (index) {
-                            // Implementar navegación entre tabs cuando esté disponible
-                          },
-                        ),
-                        secondChild: const SizedBox(height: 0),
-                      ),
-
-                      const SizedBox(height: AppTheme.spacingL),
-
-                      // Widget de presupuestos
-                      if (_showFinancialSummary)
-                        BudgetDashboardWidget(userId: widget.userId),
-
-                      const SizedBox(height: AppTheme.spacingL),
-
-                      // Cabecera de Movimientos
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          Text(
-                            "Movimientos",
-                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                              color: AppTheme.textPrimaryColor,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                          Text(
-                            DateFormat('dd MMM yyyy').format(DateTime.now()),
-                            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                              color: AppTheme.textSecondaryColor,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
+                  child: _buildFinancialSummarySection(),
                 ),
               ),
 
@@ -275,12 +205,12 @@ class _HomeBodyState extends State<HomeBody> {
               right: 16,
               child: Container(
                 padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
+                  horizontal: 12,
                   vertical: 8,
                 ),
                 decoration: BoxDecoration(
                   color: AppTheme.primaryColor,
-                  borderRadius: BorderRadius.circular(20),
+                  borderRadius: BorderRadius.circular(16),
                   boxShadow: [
                     BoxShadow(
                       color: Colors.black.withOpacity(0.2),
@@ -302,7 +232,7 @@ class _HomeBodyState extends State<HomeBody> {
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: 8),
                     const Text(
                       'Sincronizando...',
                       style: TextStyle(
@@ -316,6 +246,91 @@ class _HomeBodyState extends State<HomeBody> {
             ),
         ],
       ),
+    );
+  }
+  
+  Widget _buildFinancialSummarySection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Cabecera de Resumen Financiero con botón desplegable
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(
+              "Resumen Financiero",
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+            IconButton(
+              icon: Icon(
+                _showFinancialSummary
+                    ? Icons.keyboard_arrow_up
+                    : Icons.keyboard_arrow_down,
+                color: AppTheme.textSecondaryColor,
+                size: 20,
+              ),
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(),
+              onPressed: () {
+                setState(() {
+                  _showFinancialSummary = !_showFinancialSummary;
+                });
+              },
+            ),
+          ],
+        ),
+
+        // Widget de resumen financiero
+        AnimatedCrossFade(
+          duration: const Duration(milliseconds: 300),
+          crossFadeState: _showFinancialSummary
+              ? CrossFadeState.showFirst
+              : CrossFadeState.showSecond,
+          firstChild: Padding(
+            padding: const EdgeInsets.only(top: 2.0),
+            child: FinancialSummaryDashboard(
+              userId: widget.userId,
+              selectedMonth: widget.selectedMonth,
+              onNavigateToTab: (index) {
+                // Implementar navegación entre tabs cuando esté disponible
+              },
+            ),
+          ),
+          secondChild: const SizedBox(height: 0),
+        ),
+
+        // Widget de presupuestos
+        if (_showFinancialSummary)
+          Padding(
+            padding: const EdgeInsets.only(top: 10.0),
+            child: BudgetDashboardWidget(userId: widget.userId),
+          ),
+
+        // Cabecera de Movimientos
+        Padding(
+          padding: const EdgeInsets.only(top: 16.0, bottom: 8.0),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                "Movimientos",
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                  color: AppTheme.textPrimaryColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              Text(
+                DateFormat('dd MMM yyyy').format(DateTime.now()),
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: AppTheme.textSecondaryColor,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }

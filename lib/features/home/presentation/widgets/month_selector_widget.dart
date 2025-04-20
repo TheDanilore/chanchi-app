@@ -23,38 +23,64 @@ class MonthSelectorWidget extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Container(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 16),
+      padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 8),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         boxShadow: [
           BoxShadow(
-            color: Colors.black12,
-            blurRadius: 4,
-            offset: Offset(0, 2),
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 3,
+            offset: const Offset(0, 1),
           ),
         ],
       ),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          IconButton(
-            icon: Icon(Icons.chevron_left, color: style.arrowColor),
-            onPressed: onPreviousMonth,
-          ),
+          _buildArrowButton(Icons.chevron_left, onPreviousMonth, true),
           GestureDetector(
             onTap: () => _showMonthPicker(context),
-            child: Text(
-              DateFormat('MMMM yyyy', 'es').format(selectedMonth),
-              style: style.selectedMonthStyle,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    DateFormat('MMMM yyyy', 'es').format(selectedMonth),
+                    style: style.selectedMonthStyle,
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    Icons.calendar_today_outlined,
+                    size: 16,
+                    color: AppTheme.primaryColor,
+                  ),
+                ],
+              ),
             ),
           ),
-          IconButton(
-            icon: Icon(Icons.chevron_right, 
-              color: canGoNext ? style.arrowColor : Colors.grey),
-            onPressed: canGoNext ? onNextMonth : null,
-          ),
+          _buildArrowButton(Icons.chevron_right, onNextMonth, canGoNext),
         ],
+      ),
+    );
+  }
+
+  Widget _buildArrowButton(
+    IconData icon,
+    VoidCallback onPressed,
+    bool isEnabled,
+  ) {
+    return InkWell(
+      onTap: isEnabled ? onPressed : null,
+      borderRadius: BorderRadius.circular(20),
+      child: Container(
+        padding: const EdgeInsets.all(8),
+        child: Icon(
+          icon,
+          color: isEnabled ? style.arrowColor : Colors.grey.shade300,
+          size: 22,
+        ),
       ),
     );
   }
@@ -72,6 +98,7 @@ class MonthSelectorWidget extends StatelessWidget {
               primary: AppTheme.primaryColor,
               onPrimary: Colors.white,
             ),
+            dialogBackgroundColor: Colors.white,
           ),
           child: child!,
         );
@@ -90,7 +117,7 @@ class MonthSelectorStyle {
 
   const MonthSelectorStyle({
     this.selectedMonthStyle = const TextStyle(
-      fontSize: 18,
+      fontSize: 16,
       fontWeight: FontWeight.w600,
     ),
     this.arrowColor = Colors.black87,

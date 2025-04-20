@@ -57,9 +57,7 @@ class AccountList extends StatelessWidget {
       itemBuilder: (context, index) {
         if (index == accounts.length) {
           return Padding(
-            padding: const EdgeInsets.symmetric(
-              vertical: AppTheme.spacingM,
-            ),
+            padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingM),
             child: OutlinedButton.icon(
               onPressed: onAddAccount,
               icon: const Icon(Icons.add),
@@ -73,10 +71,7 @@ class AccountList extends StatelessWidget {
           );
         }
 
-        return AccountCard(
-          account: accounts[index],
-          onTap: onEditAccount,
-        );
+        return AccountCard(account: accounts[index], onTap: onEditAccount);
       },
     );
   }

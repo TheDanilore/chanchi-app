@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/data/models/category.dart';
 import 'package:chanchi_app/data/models/account.dart';
-import 'package:chanchi_app/features/home/presentation/widgets/transaction_card.dart';
+import 'package:chanchi_app/core/widgets/transaction_card.dart';
 
 class TransactionDateGroup extends StatelessWidget {
   final String dateTitle;

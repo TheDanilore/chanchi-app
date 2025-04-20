@@ -166,11 +166,6 @@ class _AccountsScreenState extends State<AccountsScreen> {
           ],
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: () => _showAddAccountDialog(context),
-        backgroundColor: AppTheme.primaryColor,
-        child: const Icon(Icons.add),
-      ),
     );
   }
 
