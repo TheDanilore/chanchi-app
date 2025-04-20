@@ -83,40 +83,6 @@ class TransactionListService {
     }
   }
 
-  Future<List<Map<String, dynamic>>> getLocalTransactions(String userId) async {
-    try {
-      final prefs = await SharedPreferences.getInstance();
-      final cacheKey = 'cached_transactions_$userId';
-      final cachedJson = prefs.getString(cacheKey);
-
-      if (cachedJson == null || cachedJson.isEmpty) {
-        return [];
-      }
-
-      final List<dynamic> rawTransactions = jsonDecode(cachedJson) as List;
-
-      return rawTransactions.map((item) {
-        final transaction = Map<String, dynamic>.from(item as Map);
-
-        if (transaction['dateTime'] is Map) {
-          final dateMap = transaction['dateTime'] as Map;
-          transaction['dateTime'] = Timestamp(
-            dateMap['_seconds'] ??
-                DateTime.now().millisecondsSinceEpoch ~/ 1000,
-            dateMap['_nanoseconds'] ?? 0,
-          );
-        } else if (!(transaction['dateTime'] is Timestamp)) {
-          transaction['dateTime'] = Timestamp.now();
-        }
-
-        return transaction;
-      }).toList();
-    } catch (e) {
-      print('Error al obtener transacciones locales: $e');
-      return [];
-    }
-  }
-
   Future<List<Map<String, dynamic>>> getTransactions({
     DateTime? startDate,
     DateTime? endDate,
@@ -283,37 +249,93 @@ class TransactionListService {
     bool refreshUI = true,
   }) async {
     try {
-      await _transactionService.moveToTrash(userId, docId);
+      // Verificar si es un ID temporal
+      if (docId.startsWith('temp_')) {
+        // Si es un ID temporal, manejarlo localmente
+        await _handleTemporaryIdDeletion(docId);
+      } else {
+        // Para IDs regulares, usar el servicio y manejar posibles errores
+        try {
+          await _transactionService.moveToTrash(userId, docId);
+        } catch (e) {
+          print('Error al mover a papelera mediante servicio: $e');
+          // Fallback: actualizar al menos la caché local en caso de error
+          await _updateLocalTransactionTrashStatus(docId, true);
 
-      if (refreshUI) {
-        // Implement any necessary UI refresh logic
+          // No mostrar SnackBar en este punto para evitar mensajes de error confusos
+        }
       }
+
+      // Actualización de UI delegada al componente que llama a este método
     } catch (e) {
-      print('Error moving to trash: $e');
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error moving to trash: $e')));
+      print('Error general en moveToTrash: $e');
+      if (context.mounted) {
+        // Solo mostrar el error si es algo inesperado que no sea de permisos
+        if (!e.toString().contains('permission-denied')) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Error al procesar la transacción: $e')),
+          );
+        }
+      }
     }
   }
 
-  Future<String?> duplicateTransaction(
+  Future<void> _handleTemporaryIdDeletion(String tempId) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'cached_transactions_$userId';
+      final cachedJson = prefs.getString(cacheKey);
+
+      if (cachedJson != null && cachedJson.isNotEmpty) {
+        final List<dynamic> transactions = jsonDecode(cachedJson) as List;
+        final newTransactions =
+            transactions.where((t) => (t as Map)['id'] != tempId).toList();
+        await prefs.setString(cacheKey, jsonEncode(newTransactions));
+        print('ID temporal $tempId eliminado localmente');
+
+        // También verificar si hay operaciones pendientes para este ID y eliminarlas
+        final pendingOpsKey = 'pending_transactions_$userId';
+        final pendingJson = prefs.getString(pendingOpsKey);
+
+        if (pendingJson != null && pendingJson.isNotEmpty) {
+          final List<dynamic> pendingOps = jsonDecode(pendingJson) as List;
+          final newPendingOps =
+              pendingOps.where((op) => (op as Map)['docId'] != tempId).toList();
+
+          if (pendingOps.length != newPendingOps.length) {
+            await prefs.setString(pendingOpsKey, jsonEncode(newPendingOps));
+            print('Operaciones pendientes para ID $tempId eliminadas');
+          }
+        }
+      }
+    } catch (e) {
+      print('Error al eliminar ID temporal: $e');
+      throw e;
+    }
+  }
+
+  Future<String> duplicateTransaction(
+    String userId,
     Map<String, dynamic> transaction,
-    BuildContext context,
   ) async {
     try {
+      // El método delega la operación al TransactionService
       final String newTransactionId = await _transactionService
           .duplicateTransaction(userId, transaction);
 
-      if (!context.mounted) return null;
-
       return newTransactionId;
     } catch (e) {
-      if (!context.mounted) return null;
+      print('Error en TransactionListService.duplicateTransaction: $e');
+      throw e; // Re-lanzar el error para que el llamador pueda manejarlo
+    }
+  }
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("Error al duplicar: ${e.toString()}")),
-      );
-      return null;
+  Future<List<Map<String, dynamic>>> getLocalTransactions(String userId) async {
+    try {
+      return await _transactionService.getLocalTransactions(userId);
+    } catch (e) {
+      print('Error al obtener transacciones locales: $e');
+      return []; // Devolver lista vacía en caso de error
     }
   }
 

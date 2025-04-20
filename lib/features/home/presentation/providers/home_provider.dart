@@ -9,7 +9,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 class HomeProvider extends ChangeNotifier {
   final _auth = FirebaseAuth.instance;
   final _homeService = HomeService();
-  
+
   // Estado de UI
   int _selectedIndex = 0;
   bool _showFilterOptions = false;
@@ -17,17 +17,17 @@ class HomeProvider extends ChangeNotifier {
   bool _isOffline = false;
   bool _isSyncing = false;
   int _pendingOperationsCount = 0;
-  
+
   // Filtros
   String? _selectedCategoryId;
   String? _selectedAccountId;
   DateTime? _startDate;
   DateTime? _endDate;
   DateTime _selectedMonth = DateTime.now();
-  
+
   // Suscripciones
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  
+
   // Getters
   int get selectedIndex => _selectedIndex;
   bool get showFilterOptions => _showFilterOptions;
@@ -37,43 +37,47 @@ class HomeProvider extends ChangeNotifier {
   int get pendingOperationsCount => _pendingOperationsCount;
   String get userId => _auth.currentUser?.uid ?? '';
   DateTime get selectedMonth => _selectedMonth;
-  
+  bool _isActive = true;
+
   // Inicialización
   void initialize() {
     _checkConnectivity();
     _updatePendingOperationsCount();
-    
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((results) {
+
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) {
       _checkConnectivity();
     });
   }
-  
+
   @override
   void dispose() {
+    _isActive = false;
     _connectivitySubscription?.cancel();
     super.dispose();
   }
-  
+
   // Métodos
   void onItemTapped(int index) {
     _selectedIndex = index;
     notifyListeners();
-    
+
     if (index == 0) {
       loadTransactions();
     }
   }
-  
+
   void toggleFilterOptions() {
     _showFilterOptions = !_showFilterOptions;
     notifyListeners();
   }
-  
+
   void toggleFinancialSummary() {
     _showFinancialSummary = !_showFinancialSummary;
     notifyListeners();
   }
-  
+
   Future<void> _updatePendingOperationsCount() async {
     if (_auth.currentUser != null) {
       final count = await _homeService.getPendingOperationsCount(
@@ -83,24 +87,26 @@ class HomeProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   Future<void> _checkConnectivity() async {
     bool wasOffline = _isOffline;
     final isConnected = await _homeService.checkConnectivity();
     _isOffline = !isConnected;
+
+    if (!_isActive) return; // Verificar si el proveedor aún está activo
     notifyListeners();
-    
+
     if (wasOffline && !_isOffline && _auth.currentUser != null) {
       await syncData();
     }
   }
-  
+
   Future<void> syncData() async {
     if (_isSyncing) return;
-    
+
     _isSyncing = true;
     notifyListeners();
-    
+
     try {
       final success = await _homeService.attemptSync();
       // El resultado se maneja en la UI
@@ -112,22 +118,22 @@ class HomeProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
   Future<void> loadTransactions() async {
     notifyListeners();
     await _updatePendingOperationsCount();
   }
-  
+
   Future<void> refreshData() async {
     await loadTransactions();
-    
+
     if (_isOffline && _pendingOperationsCount > 0) {
       await syncData();
     }
-    
+
     notifyListeners();
   }
-  
+
   void changeMonth(DateTime newMonth) {
     _selectedMonth = DateTime(newMonth.year, newMonth.month, 1);
     _startDate = DateTime(
@@ -147,15 +153,15 @@ class HomeProvider extends ChangeNotifier {
       59,
       999,
     ).subtract(const Duration(milliseconds: 1));
-    
+
     notifyListeners();
     loadTransactions();
   }
-  
+
   void goToPreviousMonth() {
     changeMonth(DateTime(_selectedMonth.year, _selectedMonth.month - 1, 1));
   }
-  
+
   void goToNextMonth() {
     changeMonth(DateTime(_selectedMonth.year, _selectedMonth.month + 1, 1));
   }

@@ -6,6 +6,7 @@ import 'package:chanchi_app/features/home/presentation/widgets/budget_dashboard_
 import 'package:chanchi_app/features/home/presentation/widgets/financial_summary_dashboard_widgets.dart';
 import 'package:chanchi_app/features/home/presentation/widgets/month_selector_widget.dart';
 import 'package:chanchi_app/features/home/presentation/widgets/transaction_list_widgets.dart';
+import 'package:chanchi_app/features/transactions/presentation/screens/add_transaction_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 
@@ -100,17 +101,38 @@ class _HomeBodyState extends State<HomeBody> {
   }
 
   void _editTransaction(Map<String, dynamic> transaction, String docId) async {
-    // Esta función será implementada después al refactorizar AddTransactionScreen
+    try {
+      // Navegar a la pantalla de edición de transacción
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder:
+              (_) => AddTransactionScreen(
+                userId: widget.userId,
+                transaction: transaction,
+                docId: docId,
+                isEditing: true,
+              ),
+        ),
+      );
+
+      // Refrescar los datos después de volver de la edición
+      await widget.onRefresh();
+    } catch (e) {
+      print('Error al editar transacción: $e');
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Error al editar transacción: $e'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return TabBarView(
       controller: widget.tabController,
-      children: [
-        _buildGeneralTab(),
-        AnalyticsDashboard(userId: widget.userId),
-      ],
+      children: [_buildGeneralTab(), AnalyticsDashboard(userId: widget.userId)],
     );
   }
 
@@ -128,7 +150,10 @@ class _HomeBodyState extends State<HomeBody> {
               if (widget.isOffline && widget.pendingOperationsCount > 0)
                 SliverToBoxAdapter(
                   child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 12.0, vertical: 4.0),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12.0,
+                      vertical: 4.0,
+                    ),
                     child: OfflineIndicatorWidget(
                       isOffline: widget.isOffline,
                       isSyncing: widget.isSyncing,
@@ -165,7 +190,10 @@ class _HomeBodyState extends State<HomeBody> {
               // Resumen Financiero
               SliverToBoxAdapter(
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 20.0, vertical: 4.0),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 20.0,
+                    vertical: 4.0,
+                  ),
                   child: _buildFinancialSummarySection(),
                 ),
               ),
@@ -227,9 +255,7 @@ class _HomeBodyState extends State<HomeBody> {
                       height: 16,
                       child: CircularProgressIndicator(
                         strokeWidth: 2,
-                        valueColor: AlwaysStoppedAnimation<Color>(
-                          Colors.white,
-                        ),
+                        valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                       ),
                     ),
                     const SizedBox(width: 8),
@@ -248,7 +274,7 @@ class _HomeBodyState extends State<HomeBody> {
       ),
     );
   }
-  
+
   Widget _buildFinancialSummarySection() {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -259,9 +285,9 @@ class _HomeBodyState extends State<HomeBody> {
           children: [
             Text(
               "Resumen Financiero",
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             IconButton(
               icon: Icon(
@@ -285,9 +311,10 @@ class _HomeBodyState extends State<HomeBody> {
         // Widget de resumen financiero
         AnimatedCrossFade(
           duration: const Duration(milliseconds: 300),
-          crossFadeState: _showFinancialSummary
-              ? CrossFadeState.showFirst
-              : CrossFadeState.showSecond,
+          crossFadeState:
+              _showFinancialSummary
+                  ? CrossFadeState.showFirst
+                  : CrossFadeState.showSecond,
           firstChild: Padding(
             padding: const EdgeInsets.only(top: 2.0),
             child: FinancialSummaryDashboard(

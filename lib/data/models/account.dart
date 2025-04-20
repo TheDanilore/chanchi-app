@@ -9,7 +9,7 @@ class Account {
   final String? iconName;
   final String? color;
   final String? currencyCode;
-  
+
   // Nuevas propiedades para tarjetas de crédito
   final bool isCreditCard;
   final double? creditLimit;
@@ -47,40 +47,43 @@ class Account {
     return null;
   }
 
-// Añade este método a la clase Account
-static String normalizeType(String type) {
-  Map<String, String> typeMapping = {
-    'Efectivo': 'cash',
-    'Cuenta Corriente': 'checking',
-    'Cuenta de Ahorros': 'savings',
-    'Tarjeta de Crédito': 'credit_card',
-    'Inversión': 'investment',
-  };
-  
-  return typeMapping[type] ?? type;
-}
+  // Añade este método a la clase Account
+  static String normalizeType(String type) {
+    Map<String, String> typeMapping = {
+      'Efectivo': 'cash',
+      'Cuenta Corriente': 'checking',
+      'Cuenta de Ahorros': 'savings',
+      'Tarjeta de Crédito': 'credit_card',
+      'Inversión': 'investment',
+    };
 
-// Y modifica el método fromMap:
-factory Account.fromMap(Map<String, dynamic> map, String docId) {
-  final type = normalizeType(map['type'] ?? '');
-  
-  return Account(
-    id: docId,
-    name: map['name'] ?? '',
-    type: type,
-    institution: map['institution'] ?? '',
-    balance: (map['balance'] ?? 0.0).toDouble(),
-    iconName: map['iconName'],
-    color: map['color'],
-    currencyCode: map['currencyCode'] ?? 'PEN',
-    isCreditCard: map['isCreditCard'] ?? type == 'credit_card',
-    creditLimit: map['creditLimit']?.toDouble(),
-    includeInTotalBalance: map['includeInTotalBalance'] ?? true,
-    billingCycleEndDate: map['billingCycleEndDate'] != null 
-        ? (map['billingCycleEndDate'] as Timestamp).toDate()
-        : null,
-  );
-}
+    return typeMapping[type] ?? type;
+  }
+
+  factory Account.fromMap(Map<String, dynamic> map, String docId) {
+    final type = normalizeType(map['type'] ?? '');
+
+    // Verificar si ya existe un userId en el mapa
+    final id = map.containsKey('userId') ? '${map['userId']}/$docId' : docId;
+
+    return Account(
+      id: id, // Usar el ID generado
+      name: map['name'] ?? '',
+      type: type,
+      institution: map['institution'] ?? '',
+      balance: (map['balance'] ?? 0.0).toDouble(),
+      iconName: map['iconName'],
+      color: map['color'],
+      currencyCode: map['currencyCode'] ?? 'PEN',
+      isCreditCard: map['isCreditCard'] ?? type == 'credit_card',
+      creditLimit: map['creditLimit']?.toDouble(),
+      includeInTotalBalance: map['includeInTotalBalance'] ?? true,
+      billingCycleEndDate:
+          map['billingCycleEndDate'] != null
+              ? (map['billingCycleEndDate'] as Timestamp).toDate()
+              : null,
+    );
+  }
 
   // Convertir a mapa
   Map<String, dynamic> toMap() {
@@ -95,9 +98,10 @@ factory Account.fromMap(Map<String, dynamic> map, String docId) {
       'isCreditCard': isCreditCard,
       'creditLimit': creditLimit,
       'includeInTotalBalance': includeInTotalBalance,
-      'billingCycleEndDate': billingCycleEndDate != null 
-          ? Timestamp.fromDate(billingCycleEndDate!)
-          : null,
+      'billingCycleEndDate':
+          billingCycleEndDate != null
+              ? Timestamp.fromDate(billingCycleEndDate!)
+              : null,
     };
   }
 
@@ -127,9 +131,9 @@ factory Account.fromMap(Map<String, dynamic> map, String docId) {
       currencyCode: currencyCode ?? this.currencyCode,
       isCreditCard: isCreditCard ?? this.isCreditCard,
       creditLimit: creditLimit ?? this.creditLimit,
-      includeInTotalBalance: includeInTotalBalance ?? this.includeInTotalBalance,
+      includeInTotalBalance:
+          includeInTotalBalance ?? this.includeInTotalBalance,
       billingCycleEndDate: billingCycleEndDate ?? this.billingCycleEndDate,
     );
   }
-
 }

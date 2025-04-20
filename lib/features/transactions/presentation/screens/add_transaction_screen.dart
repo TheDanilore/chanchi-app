@@ -71,7 +71,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     super.initState();
     _loadData();
 
-    if (widget.isEditing && widget.transaction != null) {
+    if ((widget.isEditing || widget.isDuplicating) &&
+        widget.transaction != null) {
       _populateForm();
 
       // Si estamos duplicando, no guardamos los valores originales
@@ -87,6 +88,8 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
   void _populateForm() {
     final transaction = widget.transaction!;
+    print('POPULATE FORM - Duplicating: ${widget.isDuplicating}');
+    print('POPULATE FORM - Transaction data: $transaction');
 
     setState(() {
       _transactionType = transaction['type'] ?? 'expense';
@@ -331,6 +334,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                 // Eliminar campos que no deben copiarse
                 'createdAt': null,
                 'updatedAt': null,
+                'trashedAt': null,
               },
               // Es importante NO pasar el docId para que se cree como nueva
               isEditing: false,
@@ -401,7 +405,12 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
         // Crear un objeto de transacción
         final transaction = FinancialTransaction(
-          id: widget.docId ?? 'temp_${DateTime.now().millisecondsSinceEpoch}',
+          // Siempre generar un nuevo ID si estamos duplicando
+          id:
+              widget.isDuplicating
+                  ? 'temp_${DateTime.now().millisecondsSinceEpoch}'
+                  : widget.docId ??
+                      'temp_${DateTime.now().millisecondsSinceEpoch}',
           userId: widget.userId,
           accountId: _selectedAccountId!,
           categoryId: _selectedCategoryId ?? 'general',
@@ -432,7 +441,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
             );
           }
         } else {
-          // Nueva transacción
+          // Nueva transacción o duplicado (siempre crear como nueva)
           await _transactionService.addTransaction(transaction);
 
           if (mounted) {
@@ -440,7 +449,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
               MaterialPageRoute(builder: (_) => const HomeScreen()),
             );
             ScaffoldMessenger.of(context).showSnackBar(
-              const SnackBar(content: Text("Transacción agregada con éxito")),
+              SnackBar(
+                content: Text(
+                  widget.isDuplicating
+                      ? "Transacción duplicada con éxito"
+                      : "Transacción agregada con éxito",
+                ),
+              ),
             );
           }
         }

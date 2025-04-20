@@ -51,7 +51,7 @@ class _TransactionListState extends State<TransactionList> {
   bool _isLoading = true;
   List<Map<String, dynamic>> _transactions = [];
   List<Map<String, dynamic>> _filteredTransactions = [];
-  
+
   // Filtros actuales
   String? _selectedCategoryId;
   String? _selectedAccountId;
@@ -65,13 +65,13 @@ class _TransactionListState extends State<TransactionList> {
   void initState() {
     super.initState();
     _service = TransactionListService(userId: widget.userId);
-    
+
     // Inicializar filtros desde los props del widget
     _selectedCategoryId = widget.selectedCategoryId;
     _selectedAccountId = widget.selectedAccountId;
     _startDate = widget.startDate;
     _endDate = widget.endDate;
-    
+
     _loadData();
 
     _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
@@ -84,13 +84,13 @@ class _TransactionListState extends State<TransactionList> {
   @override
   void didUpdateWidget(TransactionList oldWidget) {
     super.didUpdateWidget(oldWidget);
-    
+
     // Si cambia el mes seleccionado, volver a cargar los datos
     if (oldWidget.selectedMonth.month != widget.selectedMonth.month ||
         oldWidget.selectedMonth.year != widget.selectedMonth.year) {
       _loadTransactions();
     }
-    
+
     // Actualizar filtros si vienen nuevos desde widget
     if (oldWidget.selectedCategoryId != widget.selectedCategoryId ||
         oldWidget.selectedAccountId != widget.selectedAccountId ||
@@ -128,7 +128,7 @@ class _TransactionListState extends State<TransactionList> {
           _accountsCache = accounts;
           _isLoading = false;
         });
-        
+
         // Aplicar filtros iniciales
         _applyFilters();
       }
@@ -152,9 +152,7 @@ class _TransactionListState extends State<TransactionList> {
       print(
         'TRANSACTION LIST: Filtros - Cuenta: $_selectedAccountId, Categoría: $_selectedCategoryId',
       );
-      print(
-        'TRANSACTION LIST: Rango de fechas: $_startDate - $_endDate',
-      );
+      print('TRANSACTION LIST: Rango de fechas: $_startDate - $_endDate');
 
       final transactions = await _service.getTransactions(
         selectedMonth: DateTime(
@@ -170,7 +168,7 @@ class _TransactionListState extends State<TransactionList> {
         setState(() {
           _transactions = transactions;
         });
-        
+
         // Aplicar filtros a las nuevas transacciones
         _applyFilters();
       }
@@ -181,52 +179,54 @@ class _TransactionListState extends State<TransactionList> {
       widget.onError?.call('Error al cargar transacciones: $e');
     }
   }
-  
+
   void _applyFilters() {
     if (!mounted) return;
-    
+
     setState(() {
-      _filteredTransactions = _transactions.where((transaction) {
-        // Filtro por categoría
-        if (_selectedCategoryId != null && 
-            transaction['categoryId'] != _selectedCategoryId) {
-          return false;
-        }
-        
-        // Filtro por cuenta
-        if (_selectedAccountId != null && 
-            transaction['accountId'] != _selectedAccountId) {
-          return false;
-        }
-        
-        // Filtro por rango de fechas
-        if (_startDate != null && _endDate != null) {
-          final transactionDate = (transaction['dateTime'] as Timestamp).toDate();
-          if (transactionDate.isBefore(_startDate!) || 
-              transactionDate.isAfter(_endDate!)) {
-            return false;
-          }
-        }
-        
-        return true;
-      }).toList();
+      _filteredTransactions =
+          _transactions.where((transaction) {
+            // Filtro por categoría
+            if (_selectedCategoryId != null &&
+                transaction['categoryId'] != _selectedCategoryId) {
+              return false;
+            }
+
+            // Filtro por cuenta
+            if (_selectedAccountId != null &&
+                transaction['accountId'] != _selectedAccountId) {
+              return false;
+            }
+
+            // Filtro por rango de fechas
+            if (_startDate != null && _endDate != null) {
+              final transactionDate =
+                  (transaction['dateTime'] as Timestamp).toDate();
+              if (transactionDate.isBefore(_startDate!) ||
+                  transactionDate.isAfter(_endDate!)) {
+                return false;
+              }
+            }
+
+            return true;
+          }).toList();
     });
   }
-  
+
   void _onCategorySelected(String? categoryId) {
     setState(() {
       _selectedCategoryId = categoryId;
     });
     _applyFilters();
   }
-  
+
   void _onAccountSelected(String? accountId) {
     setState(() {
       _selectedAccountId = accountId;
     });
     _applyFilters();
   }
-  
+
   void _onDateRangeSelected(DateTime? startDate, DateTime? endDate) {
     setState(() {
       _startDate = startDate;
@@ -234,7 +234,7 @@ class _TransactionListState extends State<TransactionList> {
     });
     _applyFilters();
   }
-  
+
   void _onClearFilters() {
     setState(() {
       _selectedCategoryId = null;
@@ -243,8 +243,41 @@ class _TransactionListState extends State<TransactionList> {
       _endDate = null;
     });
     _applyFilters();
-    
+
     widget.onClearFilters?.call();
+  }
+
+  void _confirmAndMoveToTrash(String docId) async {
+    if (await _confirmMoveToTrash(docId)) {
+      await _moveToTrash(docId);
+    }
+  }
+
+  Future<bool> _confirmMoveToTrash(String docId) async {
+    return await showDialog<bool>(
+          context: context,
+          builder:
+              (context) => AlertDialog(
+                title: const Text("Mover a papelera"),
+                content: const Text(
+                  "¿Estás seguro de que deseas mover esta transacción a la papelera?",
+                ),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(false),
+                    child: const Text("Cancelar"),
+                  ),
+                  TextButton(
+                    onPressed: () => Navigator.of(context).pop(true),
+                    child: Text(
+                      "Mover a papelera",
+                      style: TextStyle(color: AppTheme.primaryColor),
+                    ),
+                  ),
+                ],
+              ),
+        ) ??
+        false;
   }
 
   @override
@@ -258,10 +291,10 @@ class _TransactionListState extends State<TransactionList> {
         // Componente de filtros
         Padding(
           padding: const EdgeInsets.fromLTRB(
-            AppTheme.spacingL, 
-            0, 
-            AppTheme.spacingL, 
-            AppTheme.spacingM
+            AppTheme.spacingL,
+            0,
+            AppTheme.spacingL,
+            AppTheme.spacingM,
           ),
           child: TransactionFilterWidget(
             userId: widget.userId,
@@ -278,22 +311,24 @@ class _TransactionListState extends State<TransactionList> {
             accountsCache: _accountsCache,
           ),
         ),
-        
+
         // Lista de transacciones
         Expanded(
-          child: _filteredTransactions.isEmpty 
-              ? EmptyStateWidget(
-                  isFiltered: _selectedCategoryId != null || 
-                              _selectedAccountId != null || 
-                              _startDate != null,
-                  onClearFilters: _onClearFilters,
-                )
-              : _buildTransactionList(),
+          child:
+              _filteredTransactions.isEmpty
+                  ? EmptyStateWidget(
+                    isFiltered:
+                        _selectedCategoryId != null ||
+                        _selectedAccountId != null ||
+                        _startDate != null,
+                    onClearFilters: _onClearFilters,
+                  )
+                  : _buildTransactionList(),
         ),
       ],
     );
   }
-  
+
   Widget _buildTransactionList() {
     final groupedTransactions = _groupTransactionsByDay(_filteredTransactions);
 
@@ -338,39 +373,6 @@ class _TransactionListState extends State<TransactionList> {
     return grouped;
   }
 
-  void _confirmAndMoveToTrash(String docId) async {
-    if (await _confirmMoveToTrash(docId)) {
-      await _moveToTrash(docId);
-    }
-  }
-
-  Future<bool> _confirmMoveToTrash(String docId) async {
-    return await showDialog<bool>(
-          context: context,
-          builder:
-              (context) => AlertDialog(
-                title: const Text("Mover a papelera"),
-                content: const Text(
-                  "¿Estás seguro de que deseas mover esta transacción a la papelera?",
-                ),
-                actions: [
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(false),
-                    child: const Text("Cancelar"),
-                  ),
-                  TextButton(
-                    onPressed: () => Navigator.of(context).pop(true),
-                    child: Text(
-                      "Mover a papelera",
-                      style: TextStyle(color: AppTheme.primaryColor),
-                    ),
-                  ),
-                ],
-              ),
-        ) ??
-        false;
-  }
-
   Future<void> _moveToTrash(String docId) async {
     if (_processingAction) return;
 
@@ -379,20 +381,65 @@ class _TransactionListState extends State<TransactionList> {
     });
 
     try {
-      print('TransactionList: Moviendo a papelera: $docId');
-      
-      // Remover de la lista filtrada
+      // 1. Guardar una copia de la transacción original para restaurar en caso de error
+      final originalTransaction = _filteredTransactions.firstWhere(
+        (t) => t['id'] == docId,
+        orElse: () => {},
+      );
+
+      // 2. INMEDIATAMENTE actualizar la UI para efecto visual instantáneo
       setState(() {
         _filteredTransactions.removeWhere((t) => t['id'] == docId);
         _transactions.removeWhere((t) => t['id'] == docId);
       });
 
-      await _service.moveToTrash(docId, context, refreshUI: false);
-      await _loadTransactions();
+      // 3. Intentar la operación real en segundo plano - CORRECCIÓN AQUÍ
+      try {
+        // Pasar context como segundo parámetro, no un Map
+        await _service.moveToTrash(docId, context, refreshUI: false);
+
+        // 4. Recargar datos en segundo plano para mantener sincronía
+        try {
+          await _loadTransactions();
+        } catch (loadError) {
+          print(
+            'Error al recargar transacciones después de mover a papelera: $loadError',
+          );
+        }
+      } catch (serviceError) {
+        print('Error al mover a papelera: $serviceError');
+
+        // 5. En caso de error severo, intentar restaurar la UI
+        if (originalTransaction.isNotEmpty && mounted) {
+          setState(() {
+            _transactions.add(originalTransaction);
+            _applyFilters();
+          });
+
+          // Solo mostrar error si no es un problema de permisos
+          if (!serviceError.toString().contains('permission-denied') &&
+              mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text(
+                  'Error: No se pudo mover a papelera. Intente de nuevo.',
+                ),
+              ),
+            );
+          }
+        }
+      }
     } catch (e) {
-      print('Error en TransactionList al mover a papelera: $e');
-      await _loadTransactions();
-      widget.onError?.call('Error al mover a papelera: $e');
+      print('Error crítico al mover a papelera: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Ocurrió un error inesperado. Por favor, intente de nuevo.',
+            ),
+          ),
+        );
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -410,33 +457,44 @@ class _TransactionListState extends State<TransactionList> {
     });
 
     try {
-      final newTransactionId = await _service.duplicateTransaction(
-        transaction,
-        context,
-      );
+      // Crear una copia de la transacción para modificarla
+      final Map<String, dynamic> duplicatedTransaction = {
+        ...Map<String, dynamic>.from(transaction),
+        // Cambiar la fecha a la actual
+        'dateTime': Timestamp.fromDate(DateTime.now()),
+        // Eliminar campos que no deben copiarse
+        'createdAt': null,
+        'updatedAt': null,
+        'trashedAt': null,
+      };
 
-      if (newTransactionId != null) {
-        final docSnapshot =
-            await FirebaseFirestore.instance
-                .collection('transactions')
-                .doc(newTransactionId)
-                .get();
-        final duplicatedTransaction = docSnapshot.data();
+      // NO generar ID ahora - la transacción se guardará solo si el usuario confirma
 
-        if (duplicatedTransaction != null && mounted) {
-          Navigator.of(context).push(
+      // Navegar a la pantalla de edición con los datos duplicados
+      await Navigator.of(context)
+          .push(
             MaterialPageRoute(
               builder:
                   (_) => AddTransactionScreen(
                     userId: widget.userId,
                     transaction: duplicatedTransaction,
-                    docId: newTransactionId,
-                    isEditing: true,
+                    // No pasar docId para que se cree como nueva transacción
+                    isEditing: false,
                     isDuplicating: true,
                   ),
             ),
-          );
-        }
+          )
+          .then((_) {
+            // Recargar datos al volver
+            _loadTransactions();
+          });
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text("Error al preparar duplicación: ${e.toString()}"),
+          ),
+        );
       }
     } finally {
       if (mounted) {

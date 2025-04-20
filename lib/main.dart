@@ -97,8 +97,6 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       providers: [
         // Añade al menos un provider
         Provider<NotificationService>(create: (_) => NotificationService()),
-        // O si no tienes ningún provider disponible, puedes crear uno temporal:
-        Provider<String>(create: (_) => 'dummy'),
       ],
       child: ThemeManager(
         themeData: _themeData,
