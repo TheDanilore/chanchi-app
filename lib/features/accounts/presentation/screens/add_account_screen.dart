@@ -112,12 +112,15 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
 
   Map<String, IconData> getAccountIcons() {
     return {
-      'account_balance_wallet': Icons.account_balance_wallet,
-      'credit_card': Icons.credit_card,
-      'savings': Icons.savings,
-      'account_balance': Icons.account_balance,
-      'attach_money': Icons.attach_money,
-      'trending_up': Icons.trending_up,
+      for (var entry in [
+        'account_balance_wallet',
+        'credit_card',
+        'savings',
+        'account_balance',
+        'attach_money',
+        'trending_up',
+      ])
+        entry: IconUtils.getIconByName(entry),
     };
   }
 
@@ -256,8 +259,7 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                               (context) => AccountTransactionsScreen(
                                 userId: widget.userId,
                                 account: widget.account!,
-                                onEditTransaction: (transaction, id) {
-                                },
+                                onEditTransaction: (transaction, id) {},
                               ),
                         ),
                       );
@@ -345,8 +347,10 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                               decoration: InputDecoration(
                                 labelText: 'Nombre de la cuenta',
                                 prefixIcon: Icon(
-                                  getAccountIcons()[_selectedIconName] ??
-                                      Icons.account_balance_wallet,
+                                  IconUtils.getIconByName(
+                                    _selectedIconName,
+                                    fallbackType: _selectedType,
+                                  ),
                                   color: getColorFromHex(_selectedColor),
                                 ),
                                 border: OutlineInputBorder(
@@ -671,7 +675,12 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
                               Icon(
-                                _getAccountTypeIcon(entry.key),
+                                // Use IconUtils to get the icon
+                                IconUtils.getIconByName(
+                                  entry
+                                      .key, // Use the account type or icon name
+                                  fallbackType: 'account', // Provide a fallback
+                                ),
                                 color: Colors.white,
                                 size: 30,
                               ),
@@ -698,31 +707,6 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
         ],
       ),
     );
-  }
-
-  // Método auxiliar para obtener el ícono del tipo de cuenta
-    IconData _getIconData(String? iconName) {
-    return IconUtils.getIconByName(
-      iconName,
-      // You can provide a fallback type if needed
-      fallbackType: 'account',
-    );
-    }
-  IconData _getAccountTypeIcon(String accountType) {
-    switch (accountType) {
-      case 'cash':
-        return Icons.account_balance_wallet;
-      case 'checking':
-        return Icons.account_balance;
-      case 'savings':
-        return Icons.savings;
-      case 'credit_card':
-        return Icons.credit_card;
-      case 'investment':
-        return Icons.trending_up;
-      default:
-        return Icons.account_balance_wallet;
-    }
   }
 
   Widget _buildColorSelector() {

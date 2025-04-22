@@ -17,6 +17,7 @@ class IconUtils {
     'credit_card': Icons.credit_card,
     'savings': Icons.savings,
     'attach_money': Icons.attach_money,
+    'account_balance_wallet': Icons.account_balance_wallet,
     'category': Icons.category,
     'shop_sharp': Icons.shop_sharp,
     'payments': Icons.payments,
@@ -39,23 +40,6 @@ class IconUtils {
     'pets': Icons.pets,
     'shopping': Icons.shopping_bag,
   };
-
-  // Replace the getAccountIcons method
-  Map<String, IconData> getAccountIcons() {
-    // This method can be removed entirely and replaced with direct calls to IconUtils
-    // The map is now redundant since IconUtils provides a comprehensive icon mapping
-    return {
-      for (var entry in [
-        'account_balance_wallet',
-        'credit_card',
-        'savings',
-        'account_balance',
-        'attach_money',
-        'trending_up',
-      ])
-        entry: IconUtils.getIconByName(entry),
-    };
-  }
 
   /// Get an icon based on the icon name
   ///

@@ -1,4 +1,5 @@
 import 'package:chanchi_app/core/config/theme.dart';
+import 'package:chanchi_app/core/utils/icon_utils.dart'; // Import IconUtils
 import 'package:chanchi_app/core/utils/currency_util.dart';
 import 'package:flutter/material.dart';
 import 'package:chanchi_app/data/models/account.dart';
@@ -49,7 +50,11 @@ class AccountCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(AppTheme.radiusL),
                 ),
                 child: Icon(
-                  _getIconData(account.iconName),
+                  // Use IconUtils to get the icon
+                  IconUtils.getIconByName(
+                    account.iconName, 
+                    fallbackType: account.type
+                  ),
                   color: accountColor,
                   size: 28,
                 ),
@@ -138,7 +143,11 @@ class AccountCard extends StatelessWidget {
                       borderRadius: BorderRadius.circular(AppTheme.radiusL),
                     ),
                     child: Icon(
-                      Icons.credit_card,
+                      // Use IconUtils to get the icon
+                      IconUtils.getIconByName(
+                        account.iconName, 
+                        fallbackType: 'credit_card'
+                      ),
                       color: accountColor,
                       size: 28,
                     ),
@@ -242,20 +251,5 @@ class AccountCard extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  IconData _getIconData(String? iconName) {
-    switch (iconName) {
-      case 'credit_card':
-        return Icons.credit_card;
-      case 'savings':
-        return Icons.savings;
-      case 'account_balance':
-        return Icons.account_balance;
-      case 'wallet':
-        return Icons.account_balance_wallet;
-      default:
-        return Icons.account_balance_wallet;
-    }
   }
 }

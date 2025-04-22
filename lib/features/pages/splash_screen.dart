@@ -21,7 +21,6 @@ class _SplashScreenState extends State<SplashScreen>
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
-  bool _isInitialized = false;
   String? _errorMessage;
 
   @override
@@ -109,7 +108,6 @@ class _SplashScreenState extends State<SplashScreen>
 
       if (mounted) {
         setState(() {
-          _isInitialized = true;
         });
 
         // Navegar a la siguiente pantalla

@@ -17,7 +17,7 @@ final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
 void main() async {
   // Esto es crucial para operaciones async en main
   WidgetsFlutterBinding.ensureInitialized();
-  
+
   try {
     // Inicializar la aplicación
     final initialized = await AppInitializer.initialize();
@@ -132,10 +132,12 @@ class _MyAppState extends State<MyApp> with WidgetsBindingObserver {
       providers: [
         // Servicios principales
         Provider<NotificationService>(create: (_) => _notificationService),
-        
+
         // Añade tus otros providers aquí, como:
         ChangeNotifierProvider(create: (_) => HomeProvider()),
-        ChangeNotifierProvider(create: (_) => ProfileProvider(FirebaseAuth.instance.currentUser!)),
+        ChangeNotifierProvider(
+          create: (_) => ProfileProvider(FirebaseAuth.instance.currentUser!),
+        ),
       ],
       child: ThemeManager(
         themeData: _themeData,
