@@ -21,6 +21,7 @@ class AddTransactionScreen extends StatefulWidget {
   final bool isDuplicating;
   final String? preselectedAccountId;
   final bool hideAppBar;
+  final Account? account; // Add this parameter
 
   const AddTransactionScreen({
     super.key,
@@ -31,6 +32,7 @@ class AddTransactionScreen extends StatefulWidget {
     this.isDuplicating = false,
     this.preselectedAccountId,
     this.hideAppBar = false,
+    this.account, // Add this parameter to the constructor
   });
 
   @override
@@ -63,7 +65,6 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
   bool _isLoading = false;
   bool _loadingData = true;
   List<Account> _accounts = [];
-  List<Category> _categories = [];
   final List<String> _currencyOptions = ['PEN', 'USD', 'EUR'];
 
   @override
@@ -127,7 +128,6 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
       if (mounted) {
         setState(() {
           _accounts = accounts;
-          _categories = categories;
 
           // Si no hay cuenta seleccionada, seleccionar la primera
           if (_selectedAccountId == null && accounts.isNotEmpty) {
@@ -185,8 +185,6 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
 
       if (mounted) {
         setState(() {
-          _categories = categories;
-
           // Establecer categoría predeterminada
           final defaultCategory = _getDefaultCategory(categories);
           if (defaultCategory != null) {
@@ -233,6 +231,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     );
   }
 
+  // Función mejorada para confirmar la eliminación
   void _confirmDelete() async {
     if (_isLoading) return;
 
@@ -266,25 +265,46 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     );
 
     if (choice == "trash" && mounted) {
-      _moveToTrash();
+      await _moveToTrash();
     } else if (choice == "delete" && mounted) {
-      _deletePermanently();
+      await _deletePermanently();
     }
   }
 
-  void _moveToTrash() async {
+  // Función mejorada para mover a papelera
+  Future<void> _moveToTrash() async {
+    if (widget.docId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Error: ID de transacción no disponible")),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
+      // Llamar al servicio para mover a papelera
       await _transactionService.moveToTrash(widget.userId, widget.docId!);
 
       if (mounted) {
-        Navigator.of(context).pop();
+        // Mostrar mensaje de éxito
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("Transacción movida a papelera")),
         );
+
+        // Si estamos en la pantalla de edición, volvemos a la pantalla principal
+        if (widget.isEditing) {
+          // Usamos pushReplacement si venimos de la pantalla principal
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        } else {
+          // Si no, simplemente volvemos a la pantalla anterior
+          Navigator.of(context).pop(true);
+        }
       }
     } catch (e) {
+      print('Error al mover a papelera: $e');
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(
@@ -294,21 +314,42 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
     }
   }
 
-  void _deletePermanently() async {
+  // Función mejorada para eliminar permanentemente y volver a la pantalla principal
+  Future<void> _deletePermanently() async {
+    if (widget.docId == null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("Error: ID de transacción no disponible")),
+      );
+      return;
+    }
+
     setState(() => _isLoading = true);
 
     try {
+      // Llamar al servicio para eliminar permanentemente
       await _transactionService.deletePermanently(widget.userId, widget.docId!);
 
       if (mounted) {
-        Navigator.of(context).pop();
+        // Mostrar mensaje de éxito
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
             content: Text("Transacción eliminada permanentemente"),
           ),
         );
+
+        // Si estamos en la pantalla de edición, volvemos a la pantalla principal
+        if (widget.isEditing) {
+          // Usamos pushReplacement si venimos de la pantalla principal
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HomeScreen()),
+          );
+        } else {
+          // Si no, simplemente volvemos a la pantalla anterior
+          Navigator.of(context).pop(true);
+        }
       }
     } catch (e) {
+      print('Error al eliminar permanentemente: $e');
       if (mounted) {
         setState(() => _isLoading = false);
         ScaffoldMessenger.of(context).showSnackBar(
@@ -365,47 +406,51 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           _selectedTime.minute,
         );
 
-        // Verificar si la cuenta seleccionada es una tarjeta de crédito y si hay suficiente límite disponible
+        // Analizar el monto
+        double amount;
+        try {
+          amount = double.parse(_amountController.text);
+        } catch (e) {
+          setState(() => _isLoading = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text("Monto inválido: ${_amountController.text}"),
+              backgroundColor: Colors.red,
+            ),
+          );
+          return;
+        }
+
+        // Solo validar saldo para gastos (no para ingresos)
         if (_transactionType == 'expense') {
-          final accountDoc =
-              await FirebaseFirestore.instance
-                  .collection('users')
-                  .doc(widget.userId)
-                  .collection('accounts')
-                  .doc(_selectedAccountId)
-                  .get();
-
-          if (accountDoc.exists) {
-            final accountData = accountDoc.data()!;
-            final bool isCreditCard = accountData['isCreditCard'] ?? false;
-
-            if (isCreditCard) {
-              final double creditLimit =
-                  (accountData['creditLimit'] ?? 0.0).toDouble();
-              final double currentBalance =
-                  (accountData['balance'] ?? 0.0).toDouble();
-              final double amount = double.parse(_amountController.text);
-              final double availableCredit = creditLimit - currentBalance;
-
-              if (amount > availableCredit) {
-                setState(() => _isLoading = false);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      "El monto excede el límite disponible de la tarjeta (${CurrencyUtil.format(amount: availableCredit, currencyCode: _selectedCurrency ?? 'PEN')})",
-                    ),
-                    backgroundColor: Colors.red,
-                  ),
+          try {
+            final String? validationError = await _transactionService
+                .getTransactionValidationError(
+                  widget.userId,
+                  _selectedAccountId!,
+                  amount,
+                  _transactionType,
+                  _selectedCurrency ?? 'PEN',
                 );
-                return;
-              }
+
+            if (validationError != null) {
+              setState(() => _isLoading = false);
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(
+                  content: Text(validationError),
+                  backgroundColor: Colors.red,
+                ),
+              );
+              return;
             }
+          } catch (validationError) {
+            print('Error en validación: $validationError');
+            // Continuamos a pesar del error en validación
           }
         }
 
         // Crear un objeto de transacción
         final transaction = FinancialTransaction(
-          // Siempre generar un nuevo ID si estamos duplicando
           id:
               widget.isDuplicating
                   ? 'temp_${DateTime.now().millisecondsSinceEpoch}'
@@ -415,7 +460,7 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           accountId: _selectedAccountId!,
           categoryId: _selectedCategoryId ?? 'general',
           description: _descriptionController.text,
-          amount: double.parse(_amountController.text),
+          amount: amount,
           dateTime: dateTime,
           type: _transactionType,
           notes: _notesController.text.isEmpty ? null : _notesController.text,
@@ -496,15 +541,22 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
                   ),
                 ),
                 backgroundColor: AppTheme.primaryColor,
+                leading: IconButton(
+                  icon: const Icon(Icons.arrow_back),
+                  onPressed: () => Navigator.of(context).pop(),
+                  tooltip: 'Volver',
+                ),
                 actions:
                     widget.isEditing && !widget.isDuplicating
                         ? [
+                          // Botón para duplicar transacción
                           IconButton(
                             icon: const Icon(Icons.copy),
                             onPressed:
                                 _isLoading ? null : _duplicateTransaction,
                             tooltip: 'Duplicar transacción',
                           ),
+                          // Botón para eliminar transacción (muestra opciones)
                           IconButton(
                             icon: const Icon(Icons.delete),
                             onPressed: _isLoading ? null : _confirmDelete,

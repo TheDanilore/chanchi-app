@@ -42,82 +42,121 @@ class TransactionService {
     );
   }
 
-  Future<void> deletePermanently(
+  // Method to validate if a transaction can be performed based on available balance
+  Future<bool> validateTransactionAmount(
     String userId,
-    String transactionId, {
-    bool sync = true,
-  }) async {
-    final isConnected = _connectivityService.isConnected;
-
+    String accountId,
+    double amount,
+    String transactionType,
+  ) async {
     try {
-      final transactionRef = _firestore
-          .collection('transactions')
-          .doc(transactionId);
+      // For income transactions, we always return true (no validation needed)
+      if (transactionType == 'income') {
+        return true;
+      }
 
-      if (isConnected) {
-        await _firestore.runTransaction((transaction) async {
-          // 1. Obtener la transacción actual
-          final transactionDoc = await transaction.get(transactionRef);
-
-          if (!transactionDoc.exists) {
-            throw Exception("La transacción no existe");
-          }
-
-          final transactionData = transactionDoc.data() as Map<String, dynamic>;
-          final isInTrash = transactionData['isInTrash'] == true;
-          final categoryId = transactionData['categoryId'] ?? '';
-
-          // Identificar si es parte de una transferencia
-          final bool isTransferTransaction =
-              categoryId == 'transfer_out' || categoryId == 'transfer_in';
-
-          // Si es parte de una transferencia, buscar la transacción relacionada
-          if (isTransferTransaction) {
-            // Determinar si es la transacción de salida o entrada
-            final relatedCategoryId =
-                categoryId == 'transfer_out' ? 'transfer_in' : 'transfer_out';
-
-            // Buscar la transacción relacionada
-            final relatedTransactionsQuery =
-                await _firestore
-                    .collection('transactions')
-                    .where('userId', isEqualTo: userId)
-                    .where(
-                      'fromAccountId',
-                      isEqualTo: transactionData['accountId'],
-                    )
-                    .where('categoryId', isEqualTo: relatedCategoryId)
-                    .where('amount', isEqualTo: transactionData['amount'])
-                    .where('dateTime', isEqualTo: transactionData['dateTime'])
-                    .get();
-
-            // Eliminar la transacción relacionada
-            if (relatedTransactionsQuery.docs.isNotEmpty) {
-              final relatedTransactionRef =
-                  relatedTransactionsQuery.docs.first.reference;
-              transaction.delete(relatedTransactionRef);
-            }
-          }
-
-          // Proceder con la eliminación de la transacción original
+      // Get the account
+      final accountDoc =
           await _firestore
-              .collection('transactions')
-              .doc(transactionId)
-              .delete();
-        });
+              .collection('users')
+              .doc(userId)
+              .collection('accounts')
+              .doc(accountId)
+              .get();
+
+      if (!accountDoc.exists) {
+        throw Exception("La cuenta no existe");
+      }
+
+      final accountData = accountDoc.data() as Map<String, dynamic>;
+      final bool isCreditCard = accountData['isCreditCard'] ?? false;
+      final double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
+
+      // Check if transaction is valid based on account type
+      if (isCreditCard) {
+        // For credit cards, check against the available credit limit
+        final double creditLimit =
+            (accountData['creditLimit'] ?? 0.0).toDouble();
+        final double availableCredit = creditLimit - currentBalance;
+
+        return amount <= availableCredit;
       } else {
-        // Sin conexión, guardar para sincronizar después
-        if (sync) {
-          await _savePendingOperation('delete', userId, transactionId, {});
-        }
+        // For regular accounts, check against the current balance
+        return amount <= currentBalance;
       }
     } catch (e) {
-      print('Error al eliminar permanentemente: $e');
-      // Si ocurre un error, guardar para sincronizar después
-      if (sync) {
-        await _savePendingOperation('delete', userId, transactionId, {});
+      print('Error validating transaction amount: $e');
+      return false;
+    }
+  }
+
+  // Method to get validation error message (returns null if valid)
+  Future<String?> getTransactionValidationError(
+    String userId,
+    String accountId,
+    double amount,
+    String transactionType,
+    String currencyCode,
+  ) async {
+    try {
+      // Las transacciones de ingreso siempre son válidas
+      if (transactionType == 'income') {
+        return null;
       }
-      rethrow;
+
+      // Si no hay un userId o accountId válido, no validamos (evitamos errores)
+      if (userId.isEmpty || accountId.isEmpty) {
+        return null;
+      }
+
+      // Verificar si la cuenta existe
+      final accountDoc =
+          await _firestore
+              .collection('users')
+              .doc(userId)
+              .collection('accounts')
+              .doc(accountId)
+              .get();
+
+      if (!accountDoc.exists) {
+        return "La cuenta seleccionada no existe";
+      }
+
+      final accountData = accountDoc.data() as Map<String, dynamic>;
+      if (accountData == null) {
+        return null; // Si no hay datos, no podemos validar pero tampoco bloqueamos
+      }
+
+      final bool isCreditCard = accountData['isCreditCard'] ?? false;
+      final double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
+      final String accountName = accountData['name'] ?? 'Cuenta';
+
+      // Validación para tarjetas de crédito
+      if (isCreditCard) {
+        // Solo validamos si hay límite definido
+        if (accountData.containsKey('creditLimit')) {
+          final double creditLimit =
+              (accountData['creditLimit'] ?? 0.0).toDouble();
+          final double availableCredit = creditLimit - currentBalance;
+
+          if (amount > availableCredit) {
+            return "El monto excede el límite disponible de la tarjeta (${CurrencyUtil.format(amount: availableCredit, currencyCode: currencyCode)})";
+          }
+        }
+      }
+      // Validación para cuentas normales
+      else {
+        if (amount > currentBalance) {
+          return "El monto excede el saldo disponible en $accountName (${CurrencyUtil.format(amount: currentBalance, currencyCode: currencyCode)})";
+        }
+      }
+
+      return null; // No hay error, la transacción es válida
+    } catch (e) {
+      print('Error en validación de transacción: $e');
+      // En caso de error, permitimos que la operación continúe
+      // pero registramos el error para depuración
+      return null;
     }
   }
 
@@ -566,45 +605,65 @@ class TransactionService {
     }
   }
 
-  // Dentro de TransactionService, modificamos addTransaction y updateTransaction
   Future<String> addTransaction(FinancialTransaction transaction) async {
     final isConnected = await _connectivityService.checkConnectivity();
 
     try {
-      // Primero, obtener la cuenta para determinar si es tarjeta de crédito
+      // Validar el monto de la transacción solo para gastos
+      if (transaction.type == 'expense') {
+        try {
+          final String? validationError = await getTransactionValidationError(
+            transaction.userId,
+            transaction.accountId,
+            transaction.amount,
+            transaction.type,
+            transaction.currencyCode,
+          );
+
+          if (validationError != null) {
+            throw Exception(validationError);
+          }
+        } catch (validationError) {
+          print('Error en validación: $validationError');
+          // Si la validación falla, continuamos pero registramos el error
+        }
+      }
+
+      // Obtener referencia a la cuenta
       final accountRef = _firestore
           .collection('users')
           .doc(transaction.userId)
           .collection('accounts')
           .doc(transaction.accountId);
 
-      final accountDoc = await accountRef.get();
-      if (!accountDoc.exists) {
-        throw Exception("La cuenta no existe");
+      // Obtener datos de la cuenta
+      DocumentSnapshot? accountDoc;
+      try {
+        accountDoc = await accountRef.get();
+      } catch (e) {
+        print('Error al obtener cuenta: $e');
       }
 
-      final accountData = accountDoc.data() as Map<String, dynamic>;
-      final bool isCreditCard = accountData['isCreditCard'] ?? false;
-      final bool includeInTotalBalance =
-          accountData['includeInTotalBalance'] ?? true;
+      // Si la cuenta no existe, continuamos pero registramos el error
+      if (accountDoc == null || !accountDoc.exists) {
+        print('Cuenta no encontrada: ${transaction.accountId}');
+      }
 
-      // Verificar límite disponible para tarjetas de crédito
-      if (isCreditCard && transaction.type == 'expense') {
-        final double creditLimit =
-            (accountData['creditLimit'] ?? 0.0).toDouble();
-        final double currentBalance =
-            (accountData['balance'] ?? 0.0).toDouble();
-        final double availableCredit = creditLimit - currentBalance;
+      // Datos predeterminados de la cuenta si no se puede acceder
+      bool isCreditCard = false;
+      bool includeInTotalBalance = true;
 
-        if (transaction.amount > availableCredit) {
-          throw Exception(
-            "El monto excede el límite disponible de la tarjeta (${CurrencyUtil.format(amount: availableCredit, currencyCode: transaction.currencyCode)})",
-          );
+      // Si tenemos datos de la cuenta, los utilizamos
+      if (accountDoc != null && accountDoc.exists) {
+        final accountData = accountDoc.data() as Map<String, dynamic>?;
+        if (accountData != null) {
+          isCreditCard = accountData['isCreditCard'] ?? false;
+          includeInTotalBalance = accountData['includeInTotalBalance'] ?? true;
         }
       }
 
       if (isConnected) {
-        // Modo online: Crear nueva transacción en Firestore directamente
+        // Modo online: crear transacción directamente en Firestore
         final docRef = _firestore.collection('transactions').doc();
         String newTransactionId = docRef.id;
 
@@ -624,49 +683,53 @@ class TransactionService {
           'updatedAt': FieldValue.serverTimestamp(),
         };
 
-        // Actualizar el balance de la cuenta
-        await _firestore.runTransaction((firestoreTransaction) async {
-          // Obtener la cuenta
-          final accountDoc = await firestoreTransaction.get(accountRef);
-
-          if (!accountDoc.exists) {
-            throw Exception("La cuenta no existe");
-          }
-
-          final accountData = accountDoc.data() as Map<String, dynamic>;
-          double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
-
-          // Comportamiento especial para tarjetas de crédito
-          if (isCreditCard) {
-            // Para tarjetas, aumentamos el balance gastado independientemente del tipo
-            // Pero, si es un ingreso, es un pago a la tarjeta (reduce el saldo)
-            if (transaction.type == 'expense') {
-              currentBalance +=
-                  transaction.amount; // Sumar al balance de la tarjeta
-            } else {
-              currentBalance -=
-                  transaction.amount; // Restar del balance (pagos)
+        try {
+          // Actualizar el balance de la cuenta en una transacción
+          await _firestore.runTransaction((firestoreTransaction) async {
+            // Si la cuenta no existe, no actualizamos su balance
+            if (accountDoc == null || !accountDoc.exists) {
+              firestoreTransaction.set(docRef, transactionData);
+              return;
             }
-          } else {
-            // Comportamiento normal para cuentas regulares
-            if (transaction.type == 'expense') {
-              currentBalance -= transaction.amount; // Restar un gasto
-            } else {
-              currentBalance += transaction.amount; // Sumar un ingreso
-            }
-          }
 
-          // Guardar transacción y actualizar cuenta
-          firestoreTransaction.set(docRef, transactionData);
-          firestoreTransaction.update(accountRef, {'balance': currentBalance});
-        });
+            final accountData = accountDoc.data() as Map<String, dynamic>;
+            double currentBalance = (accountData['balance'] ?? 0.0).toDouble();
+
+            // Comportamiento especial para tarjetas de crédito
+            if (isCreditCard) {
+              if (transaction.type == 'expense') {
+                currentBalance +=
+                    transaction.amount; // Sumar al saldo de la tarjeta
+              } else {
+                currentBalance -=
+                    transaction.amount; // Restar del saldo (pagos)
+              }
+            } else {
+              if (transaction.type == 'expense') {
+                currentBalance -= transaction.amount; // Restar un gasto
+              } else {
+                currentBalance += transaction.amount; // Sumar un ingreso
+              }
+            }
+
+            // Guardar transacción y actualizar cuenta
+            firestoreTransaction.set(docRef, transactionData);
+            firestoreTransaction.update(accountRef, {
+              'balance': currentBalance,
+            });
+          });
+        } catch (transactionError) {
+          // Si falla la transacción, al menos intentamos guardar la transacción
+          print('Error en transacción Firestore: $transactionError');
+          await docRef.set(transactionData);
+        }
 
         return newTransactionId;
       } else {
         // Modo offline: guardar para sincronizar después
         final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
 
-        // Guardar los datos de la transacción para sincronización posterior
+        // Guardar datos de transacción para sincronización posterior
         final transactionData = {
           'userId': transaction.userId,
           'accountId': transaction.accountId,
@@ -678,38 +741,43 @@ class TransactionService {
           'notes': transaction.notes,
           'currencyCode': transaction.currencyCode,
           'isInTrash': false,
-          'isCreditCard':
-              isCreditCard, // Guardar esta info para procesamiento offline
+          'isCreditCard': isCreditCard,
           'includeInTotalBalance': includeInTotalBalance,
         };
 
-        // Actualizar el balance local de la cuenta, considerando si es tarjeta de crédito
-        await _updateLocalAccountBalance(
-          transaction.userId,
-          transaction.accountId,
-          transaction.amount,
-          transaction.type,
-          isCreditCard: isCreditCard,
-        );
+        // Actualizar balance local de la cuenta
+        try {
+          await _updateLocalAccountBalance(
+            transaction.userId,
+            transaction.accountId,
+            transaction.amount,
+            transaction.type,
+            isCreditCard: isCreditCard,
+          );
+        } catch (e) {
+          print('Error al actualizar balance local: $e');
+        }
 
-        // Guardar en el almacenamiento local para sincronizar después
-        await _savePendingOperation(
-          'add',
-          transaction.userId,
-          tempId,
-          transactionData,
-        );
-
-        // También agregar a la caché local para que aparezca en la UI inmediatamente
-        await _addToLocalTransactionsCache(tempId, transactionData);
+        // Guardar para sincronización posterior
+        try {
+          await _savePendingOperation(
+            'add',
+            transaction.userId,
+            tempId,
+            transactionData,
+          );
+          await _addToLocalTransactionsCache(tempId, transactionData);
+        } catch (e) {
+          print('Error al guardar para sincronización: $e');
+        }
 
         return tempId;
       }
     } catch (e) {
       print('Error al agregar transacción: $e');
 
-      // En caso de error no relacionado con validación, intentamos guardar para sincronización posterior
-      if (!e.toString().contains("excede el límite")) {
+      // Para errores no relacionados con validación, intentar guardar para sincronización posterior
+      if (!e.toString().contains("excede")) {
         final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}';
         final transactionData = {
           'userId': transaction.userId,
@@ -740,7 +808,7 @@ class TransactionService {
         return tempId;
       }
 
-      // Relanzar el error para ser manejado por el llamador
+      // Relanzar error para ser manejado por el llamador
       rethrow;
     }
   }
@@ -833,17 +901,39 @@ class TransactionService {
     double? originalAmount,
     String? originalType,
   }) async {
-    // Si no hay datos originales, usar los que están en la transacción
+    // If no original data provided, use current transaction data
     originalAccountId = originalAccountId ?? transaction.accountId;
     originalAmount = originalAmount ?? transaction.amount;
     originalType = originalType ?? transaction.type;
 
-    // Luego continuar con la lógica existente en tu updateTransaction actual
     final isConnected = await _connectivityService.checkConnectivity();
 
     try {
+      // Validate transaction amount if:
+      // 1. Transaction type changed from income to expense, or
+      // 2. Expense amount increased, or
+      // 3. Account changed for an expense
+      if ((transaction.type == 'expense' && originalType == 'income') ||
+          (transaction.type == 'expense' &&
+              transaction.amount > (originalAmount ?? 0) &&
+              transaction.accountId == originalAccountId) ||
+          (transaction.type == 'expense' &&
+              transaction.accountId != originalAccountId)) {
+        final String? validationError = await getTransactionValidationError(
+          transaction.userId,
+          transaction.accountId,
+          transaction.amount,
+          transaction.type,
+          transaction.currencyCode,
+        );
+
+        if (validationError != null) {
+          throw Exception(validationError);
+        }
+      }
+
       if (isConnected) {
-        // Datos para actualizar
+        // Data to update
         final transactionData = {
           'accountId': transaction.accountId,
           'categoryId': transaction.categoryId,
@@ -860,13 +950,13 @@ class TransactionService {
             .collection('transactions')
             .doc(transaction.id);
 
-        // Si es un ID temporal, tratar como una nueva transacción
+        // If temporary ID, treat as new transaction
         if (transaction.id.startsWith('temp_')) {
           await addTransaction(transaction);
           return;
         }
 
-        // Obtener la transacción original
+        // Fetch original transaction
         final transactionDoc = await transactionRef.get();
 
         if (!transactionDoc.exists) {
@@ -878,26 +968,26 @@ class TransactionService {
         final originalAmount = (oldData['amount'] ?? 0.0).toDouble();
         final originalType = oldData['type'];
 
-        // Si cambió la cuenta o el tipo/monto, necesitamos ajustar los balances
+        // If account, amount or type changed, adjust balances
         if (originalAccountId != transaction.accountId ||
             originalAmount != transaction.amount ||
             originalType != transaction.type) {
           await _firestore.runTransaction((firestoreTransaction) async {
-            // Referencia a la cuenta original
+            // Reference to original account
             final originalAccountRef = _firestore
                 .collection('users')
                 .doc(transaction.userId)
                 .collection('accounts')
                 .doc(originalAccountId);
 
-            // Referencia a la nueva cuenta (puede ser la misma)
+            // Reference to new account (might be the same)
             final newAccountRef = _firestore
                 .collection('users')
                 .doc(transaction.userId)
                 .collection('accounts')
                 .doc(transaction.accountId);
 
-            // Obtener datos de las cuentas
+            // Get account data
             final originalAccountDoc = await firestoreTransaction.get(
               originalAccountRef,
             );
@@ -906,7 +996,7 @@ class TransactionService {
               throw Exception("La cuenta original no existe");
             }
 
-            // Si es la misma cuenta, solo obtenemos una vez
+            // If same account, only fetch once
             final newAccountDoc =
                 originalAccountId == transaction.accountId
                     ? originalAccountDoc
@@ -916,70 +1006,102 @@ class TransactionService {
               throw Exception("La nueva cuenta no existe");
             }
 
-            // Obtener balances actuales
+            // Get current balances
             final originalAccountData =
                 originalAccountDoc.data() as Map<String, dynamic>;
+            final bool originalIsCreditCard =
+                originalAccountData['isCreditCard'] ?? false;
             double originalBalance =
                 (originalAccountData['balance'] ?? 0.0).toDouble();
 
-            // Si es la misma cuenta, originalBalance = newBalance
+            // If same account, originalBalance = newBalance
+            final newAccountData = newAccountDoc.data() as Map<String, dynamic>;
+            final bool newIsCreditCard =
+                newAccountData['isCreditCard'] ?? false;
             double newBalance =
                 originalAccountId == transaction.accountId
                     ? originalBalance
-                    : ((newAccountDoc.data()
-                                as Map<String, dynamic>)['balance'] ??
-                            0.0)
-                        .toDouble();
+                    : (newAccountData['balance'] ?? 0.0).toDouble();
 
-            // 1. Revertir la transacción original en la cuenta original
-            if (originalType == 'expense') {
-              originalBalance += originalAmount; // Revertir un gasto
+            // 1. Revert original transaction from original account
+            if (originalIsCreditCard) {
+              if (originalType == 'expense') {
+                originalBalance -=
+                    originalAmount; // Reverse expense on credit card
+              } else {
+                originalBalance +=
+                    originalAmount; // Reverse payment on credit card
+              }
             } else {
-              originalBalance -= originalAmount; // Revertir un ingreso
+              if (originalType == 'expense') {
+                originalBalance += originalAmount; // Reverse expense
+              } else {
+                originalBalance -= originalAmount; // Reverse income
+              }
             }
 
-            // 2. Aplicar la nueva transacción a la cuenta correspondiente
+            // 2. Apply new transaction to appropriate account
             if (originalAccountId == transaction.accountId) {
-              // Misma cuenta, usar el balance ya modificado
-              if (transaction.type == 'expense') {
-                originalBalance -= transaction.amount; // Aplicar nuevo gasto
+              // Same account, use already modified balance
+              if (newIsCreditCard) {
+                if (transaction.type == 'expense') {
+                  originalBalance +=
+                      transaction.amount; // Apply expense to credit card
+                } else {
+                  originalBalance -=
+                      transaction.amount; // Apply payment to credit card
+                }
               } else {
-                originalBalance += transaction.amount; // Aplicar nuevo ingreso
+                if (transaction.type == 'expense') {
+                  originalBalance -= transaction.amount; // Apply expense
+                } else {
+                  originalBalance += transaction.amount; // Apply income
+                }
               }
 
-              // Actualizar la cuenta
+              // Update account
               firestoreTransaction.update(originalAccountRef, {
                 'balance': originalBalance,
               });
             } else {
-              // Cuentas diferentes
-              // Actualizar cuenta original
+              // Different accounts
+              // Update original account
               firestoreTransaction.update(originalAccountRef, {
                 'balance': originalBalance,
               });
 
-              // Aplicar a la nueva cuenta
-              if (transaction.type == 'expense') {
-                newBalance -= transaction.amount; // Aplicar nuevo gasto
+              // Apply to new account
+              if (newIsCreditCard) {
+                if (transaction.type == 'expense') {
+                  newBalance +=
+                      transaction.amount; // Apply expense to credit card
+                } else {
+                  newBalance -=
+                      transaction.amount; // Apply payment to credit card
+                }
               } else {
-                newBalance += transaction.amount; // Aplicar nuevo ingreso
+                if (transaction.type == 'expense') {
+                  newBalance -= transaction.amount; // Apply expense
+                } else {
+                  newBalance += transaction.amount; // Apply income
+                }
               }
 
-              // Actualizar nueva cuenta
+              // Update new account
               firestoreTransaction.update(newAccountRef, {
                 'balance': newBalance,
               });
             }
 
-            // Actualizar la transacción
+            // Update transaction
             firestoreTransaction.update(transactionRef, transactionData);
           });
         } else {
-          // Si no hay cambios que afecten balances, simplemente actualizamos
+          // If no changes affecting balances, just update
           await transactionRef.update(transactionData);
         }
       } else {
-        // Modo offline: guardar para sincronizar después
+        // Offline mode: store for later sync
         final transactionData = {
           'accountId': transaction.accountId,
           'categoryId': transaction.categoryId,
@@ -991,11 +1113,11 @@ class TransactionService {
           'currencyCode': transaction.currencyCode,
         };
 
-        // Si es un ID temporal, solo actualizamos la caché local
+        // If temporary ID, just update local cache
         if (transaction.id.startsWith('temp_')) {
           await _updateLocalTransactionCache(transaction.id, transactionData);
         } else {
-          // Para transacciones reales, guardamos para sincronizar
+          // For real transactions, save for sync
           await _savePendingOperation(
             'update',
             transaction.userId,
@@ -1007,25 +1129,30 @@ class TransactionService {
       }
     } catch (e) {
       print('Error al actualizar transacción: $e');
-      // Si ocurre un error, guardar para sincronizar después
-      final transactionData = {
-        'accountId': transaction.accountId,
-        'categoryId': transaction.categoryId,
-        'description': transaction.description,
-        'amount': transaction.amount,
-        'dateTime': Timestamp.fromDate(transaction.dateTime),
-        'type': transaction.type,
-        'notes': transaction.notes,
-        'currencyCode': transaction.currencyCode,
-      };
+      // If error occurs, try to save for later sync
+      if (!e.toString().contains("excede")) {
+        final transactionData = {
+          'accountId': transaction.accountId,
+          'categoryId': transaction.categoryId,
+          'description': transaction.description,
+          'amount': transaction.amount,
+          'dateTime': Timestamp.fromDate(transaction.dateTime),
+          'type': transaction.type,
+          'notes': transaction.notes,
+          'currencyCode': transaction.currencyCode,
+        };
 
-      await _savePendingOperation(
-        'update',
-        transaction.userId,
-        transaction.id,
-        transactionData,
-      );
-      await _updateLocalTransactionCache(transaction.id, transactionData);
+        await _savePendingOperation(
+          'update',
+          transaction.userId,
+          transaction.id,
+          transactionData,
+        );
+        await _updateLocalTransactionCache(transaction.id, transactionData);
+      }
+
+      // Re-throw to be handled by caller
+      rethrow;
     }
   }
 
@@ -1245,6 +1372,8 @@ class TransactionService {
     }
   }
 
+  // En TransactionService.dart
+
   Future<void> moveToTrash(
     String userId,
     String transactionId, {
@@ -1342,6 +1471,140 @@ class TransactionService {
       if (sync) {
         await _savePendingOperation('trash', userId, transactionId, {});
       }
+      rethrow; // Re-lanzar el error para que el llamador pueda manejarlo
+    }
+  }
+
+  Future<void> deletePermanently(
+    String userId,
+    String transactionId, {
+    bool sync = true,
+  }) async {
+    final isConnected = await _connectivityService.checkConnectivity();
+
+    try {
+      final transactionRef = _firestore
+          .collection('transactions')
+          .doc(transactionId);
+
+      if (isConnected) {
+        try {
+          // Si es un ID temporal, simplemente eliminar localmente
+          if (transactionId.startsWith('temp_')) {
+            await _handleTemporaryIdDeletion(userId, transactionId);
+            return;
+          }
+
+          // Para IDs regulares, realizar la transacción en Firestore
+          await _firestore.runTransaction((transaction) async {
+            // 1. Obtener la transacción actual
+            final transactionDoc = await transaction.get(transactionRef);
+
+            if (!transactionDoc.exists) {
+              throw Exception("La transacción no existe");
+            }
+
+            final transactionData =
+                transactionDoc.data() as Map<String, dynamic>;
+            final accountId = transactionData['accountId'];
+            final categoryId = transactionData['categoryId'] ?? '';
+            final amount = (transactionData['amount'] ?? 0.0).toDouble();
+            final type = transactionData['type'] ?? 'expense';
+
+            // 2. Identificar si es parte de una transferencia
+            final bool isTransferTransaction =
+                categoryId == 'transfer_out' || categoryId == 'transfer_in';
+
+            // Si es parte de una transferencia, buscar la transacción relacionada
+            if (isTransferTransaction) {
+              // Determinar si es la transacción de salida o entrada
+              final relatedCategoryId =
+                  categoryId == 'transfer_out' ? 'transfer_in' : 'transfer_out';
+
+              // Buscar la transacción relacionada
+              final relatedTransactionsQuery =
+                  await _firestore
+                      .collection('transactions')
+                      .where('userId', isEqualTo: userId)
+                      .where(
+                        'fromAccountId',
+                        isEqualTo: transactionData['accountId'],
+                      )
+                      .where('categoryId', isEqualTo: relatedCategoryId)
+                      .where('amount', isEqualTo: transactionData['amount'])
+                      .where('dateTime', isEqualTo: transactionData['dateTime'])
+                      .get();
+
+              // Eliminar la transacción relacionada
+              if (relatedTransactionsQuery.docs.isNotEmpty) {
+                final relatedTransactionRef =
+                    relatedTransactionsQuery.docs.first.reference;
+                transaction.delete(relatedTransactionRef);
+              }
+            }
+
+            // 3. Ajustar los balances de la cuenta si no estaba en papelera
+            final isInTrash = transactionData['isInTrash'] == true;
+
+            if (!isInTrash) {
+              // Obtener la cuenta
+              final accountRef = _firestore
+                  .collection('users')
+                  .doc(userId)
+                  .collection('accounts')
+                  .doc(accountId);
+
+              final accountDoc = await transaction.get(accountRef);
+
+              if (accountDoc.exists) {
+                final accountData = accountDoc.data() as Map<String, dynamic>;
+                final isCreditCard = accountData['isCreditCard'] ?? false;
+                double currentBalance =
+                    (accountData['balance'] ?? 0.0).toDouble();
+
+                // Ajustar balance según tipo de cuenta y transacción
+                if (isCreditCard) {
+                  if (type == 'expense') {
+                    currentBalance -= amount; // Revertir un gasto en tarjeta
+                  } else {
+                    currentBalance += amount; // Revertir un pago en tarjeta
+                  }
+                } else {
+                  if (type == 'expense') {
+                    currentBalance += amount; // Revertir un gasto
+                  } else {
+                    currentBalance -= amount; // Revertir un ingreso
+                  }
+                }
+
+                // Actualizar el balance de la cuenta
+                transaction.update(accountRef, {'balance': currentBalance});
+              }
+            }
+
+            // 4. Proceder con la eliminación de la transacción original
+            transaction.delete(transactionRef);
+          });
+        } catch (e) {
+          print('Error en transacción Firestore al eliminar: $e');
+          if (sync) {
+            await _savePendingOperation('delete', userId, transactionId, {});
+          }
+          rethrow;
+        }
+      } else {
+        // Sin conexión, guardar para sincronizar después
+        if (sync) {
+          await _savePendingOperation('delete', userId, transactionId, {});
+        }
+      }
+    } catch (e) {
+      print('Error al eliminar permanentemente: $e');
+      // Si ocurre un error, guardar para sincronizar después
+      if (sync) {
+        await _savePendingOperation('delete', userId, transactionId, {});
+      }
+      rethrow;
     }
   }
 

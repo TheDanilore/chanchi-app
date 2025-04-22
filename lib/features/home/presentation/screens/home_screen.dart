@@ -10,26 +10,15 @@ import 'package:chanchi_app/features/home/presentation/widgets/home_app_bar.dart
 import 'package:chanchi_app/features/home/presentation/widgets/home_body.dart';
 import 'package:provider/provider.dart';
 
-class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+// Modificación a HomeScreenContent para resolver el problema de acceso a la pantalla de agregar transacción
+class HomeScreen extends StatefulWidget {
+  const HomeScreen({Key? key}) : super(key: key);
 
   @override
-  Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => HomeProvider(),
-      child: HomeScreenContent(),
-    );
-  }
+  State<HomeScreen> createState() => _HomeScreenState();
 }
 
-class HomeScreenContent extends StatefulWidget {
-  const HomeScreenContent({super.key});
-
-  @override
-  State<HomeScreenContent> createState() => _HomeScreenContentState();
-}
-
-class _HomeScreenContentState extends State<HomeScreenContent>
+class _HomeScreenState extends State<HomeScreen>
     with SingleTickerProviderStateMixin {
   late TabController _tabController;
 
@@ -75,48 +64,119 @@ class _HomeScreenContentState extends State<HomeScreenContent>
     );
   }
 
-  // In HomeScreenContent class
+  // Método corregido para construir el cuerpo de la aplicación
   Widget _buildBody(HomeProvider provider) {
-    final List<Widget> pages = [
-      HomeBody(
-        tabController: _tabController,
-        userId: provider.userId,
-        isOffline: provider.isOffline,
-        isSyncing: provider.isSyncing,
-        pendingOperationsCount: provider.pendingOperationsCount,
-        selectedMonth: provider.selectedMonth,
-        onMonthChanged: provider.changeMonth,
-        onRefresh: provider.refreshData,
-        onSyncPressed: provider.syncData,
-        onTransferRequested: () async {
-          // Load accounts first
-          final transactionService = TransactionService();
-          final accounts = await transactionService.loadAccounts(
-            provider.userId,
-          );
+    // Usamos un IndexedStack para mantener el estado de las páginas
+    return IndexedStack(
+      index: provider.selectedIndex,
+      children: [
+        // Pantalla de inicio
+        HomeBody(
+          tabController: _tabController,
+          userId: provider.userId,
+          isOffline: provider.isOffline,
+          isSyncing: provider.isSyncing,
+          pendingOperationsCount: provider.pendingOperationsCount,
+          selectedMonth: provider.selectedMonth,
+          onMonthChanged: provider.changeMonth,
+          onRefresh: provider.refreshData,
+          onSyncPressed: provider.syncData,
+          onTransferRequested: () async {
+            try {
+              // Cargar cuentas primero
+              final transactionService = TransactionService();
+              final accounts = await transactionService.loadAccounts(
+                provider.userId,
+              );
 
-          // Show transfer screen
-          final result = await Navigator.of(context).push(
-            MaterialPageRoute(
-              builder:
-                  (_) => TransferScreen(
-                    userId: provider.userId,
-                    accounts: accounts,
+              if (context.mounted) {
+                // Mostrar pantalla de transferencia
+                final result = await Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder:
+                        (_) => TransferScreen(
+                          userId: provider.userId,
+                          accounts: accounts,
+                        ),
                   ),
-            ),
-          );
+                );
 
-          // Optional: Handle result if needed
-          if (result == true) {
-            provider.refreshData();
-          }
-        },
-      ),
-      AddTransactionScreen(userId: provider.userId, hideAppBar: true),
-      AccountsScreen(userId: provider.userId),
-    ];
+                // Opcional: Manejar resultado si es necesario
+                if (result == true) {
+                  provider.refreshData();
+                }
+              }
+            } catch (e) {
+              print('Error al cargar cuentas para transferencia: $e');
+            }
+          },
+        ),
 
-    return pages[provider.selectedIndex];
+        // Pantalla de agregar transacción (con manejo de errores)
+        Builder(
+          builder: (context) {
+            // Usamos un try-catch para manejar posibles errores
+            try {
+              return AddTransactionScreen(
+                userId: provider.userId,
+                hideAppBar: true,
+              );
+            } catch (e) {
+              // En caso de error, mostrar un widget simple con mensaje de error
+              print('Error al cargar pantalla de agregar transacción: $e');
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    SizedBox(height: 16),
+                    Text('Error al cargar la pantalla de transacción'),
+                    SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        // Volver a la pantalla de inicio
+                        provider.onItemTapped(0);
+                      },
+                      child: Text('Volver al inicio'),
+                    ),
+                  ],
+                ),
+              );
+            }
+          },
+        ),
+
+        // Pantalla de cuentas (con manejo de errores)
+        Builder(
+          builder: (context) {
+            try {
+              return AccountsScreen(userId: provider.userId);
+            } catch (e) {
+              // En caso de error, mostrar un widget simple con mensaje de error
+              print('Error al cargar pantalla de cuentas: $e');
+              return Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    SizedBox(height: 16),
+                    Text('Error al cargar la pantalla de cuentas'),
+                    SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () {
+                        // Volver a la pantalla de inicio
+                        provider.onItemTapped(0);
+                      },
+                      child: Text('Volver al inicio'),
+                    ),
+                  ],
+                ),
+              );
+            }
+          },
+        ),
+      ],
+    );
   }
 
   Widget _buildBottomNavigationBar(HomeProvider provider) {

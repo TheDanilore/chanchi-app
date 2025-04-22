@@ -1,5 +1,5 @@
 import 'package:chanchi_app/core/utils/currency_util.dart';
-import 'package:chanchi_app/features/accounts/presentation/widgets/animated_balance_widget.dart';
+import 'package:chanchi_app/features/home/presentation/widgets/animated_balance_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chanchi_app/core/config/theme.dart';

@@ -1,19 +1,19 @@
 import 'dart:async';
-
 import 'package:chanchi_app/core/config/theme.dart';
+import 'package:chanchi_app/features/accounts/presentation/screens/add_account_screen.dart'; 
 import 'package:chanchi_app/features/accounts/presentation/screens/credit_card_summary_screen.dart';
 import 'package:chanchi_app/features/accounts/presentation/widgets/account_list.dart';
 import 'package:chanchi_app/features/transactions/domain/services/transaction_service.dart';
+import 'package:chanchi_app/features/transactions/presentation/screens/add_transaction_screen.dart';
 import 'package:chanchi_app/features/transactions/presentation/screens/transfer_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:chanchi_app/data/models/account.dart';
 import 'package:chanchi_app/features/accounts/domain/services/account_service.dart';
-import 'package:chanchi_app/features/accounts/presentation/widgets/add_account_form.dart';
 
 class AccountsScreen extends StatefulWidget {
   final String userId;
 
-  const AccountsScreen({Key? key, required this.userId}) : super(key: key);
+  const AccountsScreen({super.key, required this.userId});
   @override
   _AccountsScreenState createState() => _AccountsScreenState();
 }
@@ -99,6 +99,20 @@ class _AccountsScreenState extends State<AccountsScreen> {
     }
   }
 
+  // Método para manejar la edición de transacciones
+  void _onEditTransaction(Map<String, dynamic> transaction, String transactionId) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (context) => AddTransactionScreen(
+          userId: widget.userId,
+          transaction: transaction,
+          docId: transactionId,
+          isEditing: true,
+        ),
+      ),
+    ).then((_) => _refreshData());
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -149,16 +163,14 @@ class _AccountsScreenState extends State<AccountsScreen> {
                     onPressed: () async {
                       final transactionService = TransactionService();
                       final accounts = await transactionService.loadAccounts(
-                        widget.userId, // Use widget.userId instead of userId
+                        widget.userId,
                       );
 
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder:
                               (_) => TransferScreen(
-                                userId:
-                                    widget
-                                        .userId, // Use widget.userId here as well
+                                userId: widget.userId,
                                 accounts: accounts,
                               ),
                         ),
@@ -282,8 +294,9 @@ class _AccountsScreenState extends State<AccountsScreen> {
                     return AccountList(
                       accounts: accounts,
                       onEditAccount: _editAccount,
-                      onAddAccount: () => _showAddAccountDialog(context),
+                      onAddAccount: _addAccount, // Usamos _addAccount directamente
                       userId: widget.userId,
+                      onEditTransaction: _onEditTransaction, // Pasamos el callback
                     );
                   },
                 ),
@@ -338,39 +351,26 @@ class _AccountsScreenState extends State<AccountsScreen> {
     }
   }
 
-  void _showAddAccountDialog(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppTheme.radiusXL),
-        ),
-      ),
-      builder:
-          (context) => AddAccountForm(
+  // Método actualizado para usar AddAccountScreen en lugar de AddAccountForm
+  void _addAccount() {
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (context) => AddAccountScreen(
             userId: widget.userId,
-            account: null,
-            isEditing: false,
           ),
-    ).then((_) => _refreshData()); // Refrescar después de añadir
+        ))
+        .then((_) => _refreshData());
   }
 
+  // Método actualizado para usar AddAccountScreen en lugar de AddAccountForm
   void _editAccount(Account account) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(
-          top: Radius.circular(AppTheme.radiusXL),
-        ),
-      ),
-      builder:
-          (context) => AddAccountForm(
+    Navigator.of(context)
+        .push(MaterialPageRoute(
+          builder: (context) => AddAccountScreen(
             userId: widget.userId,
             account: account,
-            isEditing: true,
           ),
-    ).then((_) => _refreshData()); // Refrescar después de editar
+        ))
+        .then((_) => _refreshData());
   }
 }

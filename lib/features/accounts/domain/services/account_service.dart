@@ -1,6 +1,5 @@
 import 'package:chanchi_app/data/models/account.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/material.dart';
 import 'package:chanchi_app/features/transactions/domain/services/transaction_service.dart';
 import 'package:chanchi_app/services/connectivity_service.dart';
 
@@ -122,6 +121,7 @@ class AccountService {
   }
 
   // Eliminar una cuenta
+  // Método mejorado para eliminar una cuenta en AccountService
   Future<void> deleteAccount(String userId, String accountId) async {
     try {
       print('Iniciando eliminación de cuenta');
@@ -154,28 +154,39 @@ class AccountService {
 
       // 2. Obtener datos de la cuenta
       final accountData = accountDoc.data() as Map<String, dynamic>;
-      final bool isCreditCard = accountData['isCreditCard'] ?? false;
-      final double balance = (accountData['balance'] ?? 0.0).toDouble();
+      (accountData['balance'] ?? 0.0).toDouble();
 
-      // 3. Obtener y procesar transacciones en un proceso de varios pasos:
+      // 3. Obtener y procesar transacciones en un proceso por pasos:
+      try {
+        // Paso 1: Mover todas las transacciones activas a la papelera
+        await _transactionService.moveAccountTransactionsToTrash(
+          userId,
+          accountId,
+        );
+      } catch (e) {
+        print('Error al mover transacciones a papelera: $e');
+        // Continuar con el proceso a pesar del error
+      }
 
-      // Paso 1: Mover todas las transacciones activas a la papelera
-      // Esto actualizará los balances automáticamente a través de _adjustBalanceForTrash
-      await _transactionService.moveAccountTransactionsToTrash(
-        userId,
-        accountId,
-      );
+      try {
+        // Paso 2: Eliminar permanentemente las transacciones que ya estaban en la papelera
+        await _transactionService.deleteAccountTrashTransactions(
+          userId,
+          accountId,
+        );
+      } catch (e) {
+        print('Error al eliminar transacciones de la papelera: $e');
+        // Continuar con el proceso a pesar del error
+      }
 
-      // Paso 2: Eliminar permanentemente las transacciones que ya estaban en la papelera
-      await _transactionService.deleteAccountTrashTransactions(
-        userId,
-        accountId,
-      );
-
-      // Paso 3: Eliminar la cuenta con seguridad
-      await accountRef.delete();
-
-      print('Cuenta eliminada correctamente');
+      // Paso 3: Eliminar la cuenta
+      try {
+        await accountRef.delete();
+        print('Cuenta eliminada correctamente');
+      } catch (e) {
+        print('Error al eliminar la cuenta: $e');
+        throw Exception('Error al eliminar la cuenta: $e');
+      }
 
       // Sincronizar las operaciones pendientes si existen
       try {
@@ -196,37 +207,53 @@ class AccountService {
     }
   }
 
-  // Método para verificar si hay transacciones asociadas a una cuenta
+  // Método mejorado para verificar transacciones asociadas
   Future<int> getAssociatedTransactionsCount(
     String userId,
     String accountId,
   ) async {
     try {
-      // Contar transacciones donde esta cuenta es la principal
-      final transactionsQuery =
-          await _firestore
-              .collection('transactions')
-              .where('userId', isEqualTo: userId)
-              .where('accountId', isEqualTo: accountId)
-              .count()
-              .get();
+      if (userId.isEmpty || accountId.isEmpty) {
+        print('IDs de usuario o cuenta vacíos, retornando 0');
+        return 0;
+      }
 
-      // Contar transacciones donde esta cuenta es la cuenta origen
-      final fromAccountTransactions =
-          await _firestore
-              .collection('transactions')
-              .where('userId', isEqualTo: userId)
-              .where('fromAccountId', isEqualTo: accountId)
-              .count()
-              .get();
+      int mainCount = 0;
+      int fromCount = 0;
 
-      // Usar el operador ?? para proporcionar un valor predeterminado de 0 si count es nulo
-      final mainCount = transactionsQuery.count ?? 0;
-      final fromCount = fromAccountTransactions.count ?? 0;
+      try {
+        // Contar transacciones donde esta cuenta es la principal
+        final transactionsQuery =
+            await _firestore
+                .collection('transactions')
+                .where('userId', isEqualTo: userId)
+                .where('accountId', isEqualTo: accountId)
+                .count()
+                .get();
+
+        mainCount = transactionsQuery.count ?? 0;
+      } catch (e) {
+        print('Error al contar transacciones principales: $e');
+      }
+
+      try {
+        // Contar transacciones donde esta cuenta es la cuenta origen
+        final fromAccountTransactions =
+            await _firestore
+                .collection('transactions')
+                .where('userId', isEqualTo: userId)
+                .where('fromAccountId', isEqualTo: accountId)
+                .count()
+                .get();
+
+        fromCount = fromAccountTransactions.count ?? 0;
+      } catch (e) {
+        print('Error al contar transacciones de origen: $e');
+      }
 
       return mainCount + fromCount;
     } catch (e) {
-      print('Error al contar transacciones asociadas: $e');
+      print('Error general al contar transacciones asociadas: $e');
       return 0; // En caso de error, devolver 0
     }
   }

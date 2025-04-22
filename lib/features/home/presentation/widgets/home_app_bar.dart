@@ -1,7 +1,7 @@
 // lib/features/home/presentation/widgets/home_app_bar.dart
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/features/profile/presentation/screens/profile_screen.dart';
-import 'package:chanchi_app/features/pages/trash_screen.dart';
+import 'package:chanchi_app/features/home/presentation/screens/trash_screen.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 

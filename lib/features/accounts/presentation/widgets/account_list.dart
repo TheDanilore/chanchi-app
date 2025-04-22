@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:chanchi_app/data/models/account.dart';
 import 'package:chanchi_app/features/accounts/domain/services/account_service.dart';
 import 'package:chanchi_app/features/accounts/presentation/widgets/account_card.dart';
+import 'package:chanchi_app/features/accounts/presentation/screens/account_transactions_screen.dart';
 
 class AccountList extends StatelessWidget {
   final List<Account> accounts;
@@ -10,6 +11,7 @@ class AccountList extends StatelessWidget {
   final VoidCallback onAddAccount;
   final String userId; // Añadimos el userId como propiedad requerida
   final AccountService _accountService = AccountService();
+  final Function(Map<String, dynamic>, String)? onEditTransaction;
 
   AccountList({
     Key? key,
@@ -17,6 +19,7 @@ class AccountList extends StatelessWidget {
     required this.onEditAccount,
     required this.onAddAccount,
     required this.userId, // Requerimos el userId desde el constructor
+    this.onEditTransaction,
   }) : super(key: key);
 
   @override
@@ -132,6 +135,7 @@ class AccountList extends StatelessWidget {
     );
   }
 
+  // Método corregido para construir el elemento de cuenta con Dismissible
   Widget _buildAccountItem(BuildContext context, Account account) {
     return Dismissible(
       key: Key(account.id),
@@ -142,8 +146,12 @@ class AccountList extends StatelessWidget {
         child: const Icon(Icons.delete, color: Colors.white),
       ),
       direction: DismissDirection.endToStart,
-      confirmDismiss: (direction) => _confirmDelete(context, account),
+      confirmDismiss: (direction) async {
+        // Usar el contexto actual para mostrar el diálogo de confirmación
+        return await _confirmDelete(context, account);
+      },
       onDismissed: (direction) {
+        // Llamar a _deleteAccount con el contexto actual
         _deleteAccount(context, account);
       },
       child: InkWell(
@@ -154,12 +162,10 @@ class AccountList extends StatelessWidget {
     );
   }
 
+  // Método corregido para confirmar la eliminación de una cuenta
   Future<bool> _confirmDelete(BuildContext context, Account account) async {
-    // Primero, verificar si hay transacciones asociadas
-    int? associatedTransactions;
-    String accountId = '';
-
     // Extraer correctamente el accountId
+    String accountId = '';
     if (account.id.contains('/')) {
       final parts = account.id.split('/');
       accountId = parts[1];
@@ -167,111 +173,116 @@ class AccountList extends StatelessWidget {
       accountId = account.id;
     }
 
-    // Obtener el recuento de transacciones
+    // Obtener el recuento de transacciones (hacerlo antes de mostrar el diálogo)
+    int? associatedTransactions;
     try {
       associatedTransactions = await _accountService
-          .getAssociatedTransactionsCount(
-            userId, // Usamos el userId que ahora es una propiedad de la clase
-            accountId,
-          );
+          .getAssociatedTransactionsCount(userId, accountId);
     } catch (e) {
       print('Error al verificar transacciones asociadas: $e');
     }
 
-    // Mostrar diálogo de confirmación
-    final result = await showDialog<bool>(
-      context: context,
-      barrierDismissible: false,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppTheme.radiusL),
-          ),
-          title: Text("Eliminar ${account.name}"),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text("¿Estás seguro que deseas eliminar esta cuenta?"),
-              const SizedBox(height: AppTheme.spacingM),
+    // Verificar si el contexto sigue siendo válido después de la operación asíncrona
+    if (!context.mounted) return false;
 
-              // Mostrar información sobre transacciones asociadas si las hay
-              if (associatedTransactions != null && associatedTransactions > 0)
-                Container(
-                  padding: const EdgeInsets.all(AppTheme.spacingM),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                    border: Border.all(color: Colors.amber.shade200),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(Icons.info_outline, color: Colors.amber.shade700),
-                      const SizedBox(width: AppTheme.spacingM),
-                      Expanded(
-                        child: Text(
-                          "Esta cuenta tiene $associatedTransactions transacciones asociadas. "
-                          "Estas transacciones se moverán a la papelera.",
-                          style: TextStyle(
+    // Ahora mostramos el diálogo con el contexto actualizado
+    return await showDialog<bool>(
+          context: context,
+          barrierDismissible: false,
+          builder: (BuildContext dialogContext) {
+            return AlertDialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(AppTheme.radiusL),
+              ),
+              title: Text("Eliminar ${account.name}"),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text("¿Estás seguro que deseas eliminar esta cuenta?"),
+                  const SizedBox(height: AppTheme.spacingM),
+
+                  // Mostrar información sobre transacciones asociadas si las hay
+                  if (associatedTransactions != null &&
+                      associatedTransactions > 0)
+                    Container(
+                      padding: const EdgeInsets.all(AppTheme.spacingM),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.shade50,
+                        borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                        border: Border.all(color: Colors.amber.shade200),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            Icons.info_outline,
                             color: Colors.amber.shade700,
-                            fontSize: 14,
+                          ),
+                          const SizedBox(width: AppTheme.spacingM),
+                          Expanded(
+                            child: Text(
+                              "Esta cuenta tiene $associatedTransactions transacciones asociadas. "
+                              "Estas transacciones se moverán a la papelera.",
+                              style: TextStyle(
+                                color: Colors.amber.shade700,
+                                fontSize: 14,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+
+                  if (associatedTransactions != null &&
+                      associatedTransactions > 0)
+                    const SizedBox(height: AppTheme.spacingM),
+
+                  Container(
+                    padding: const EdgeInsets.all(AppTheme.spacingM),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                      border: Border.all(color: Colors.red.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.warning_amber_rounded,
+                          color: Colors.red.shade700,
+                        ),
+                        const SizedBox(width: AppTheme.spacingM),
+                        Expanded(
+                          child: Text(
+                            "Esta acción no se puede deshacer y eliminará la cuenta permanentemente.",
+                            style: TextStyle(
+                              color: Colors.red.shade700,
+                              fontSize: 14,
+                            ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
-                ),
-
-              if (associatedTransactions != null && associatedTransactions > 0)
-                const SizedBox(height: AppTheme.spacingM),
-
-              Container(
-                padding: const EdgeInsets.all(AppTheme.spacingM),
-                decoration: BoxDecoration(
-                  color: Colors.red.shade50,
-                  borderRadius: BorderRadius.circular(AppTheme.radiusM),
-                  border: Border.all(color: Colors.red.shade200),
-                ),
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.warning_amber_rounded,
-                      color: Colors.red.shade700,
-                    ),
-                    const SizedBox(width: AppTheme.spacingM),
-                    Expanded(
-                      child: Text(
-                        "Esta acción no se puede deshacer y eliminará la cuenta permanentemente.",
-                        style: TextStyle(
-                          color: Colors.red.shade700,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                ],
               ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              child: const Text("Cancelar"),
-              onPressed: () => Navigator.of(context).pop(false),
-            ),
-            ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              child: const Text("Eliminar"),
-              onPressed: () => Navigator.of(context).pop(true),
-            ),
-          ],
-        );
-      },
-    );
-
-    // Manejar el caso en que el resultado sea nulo
-    return result ?? false;
+              actions: [
+                TextButton(
+                  child: const Text("Cancelar"),
+                  onPressed: () => Navigator.of(dialogContext).pop(false),
+                ),
+                ElevatedButton(
+                  style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+                  child: const Text("Eliminar"),
+                  onPressed: () => Navigator.of(dialogContext).pop(true),
+                ),
+              ],
+            );
+          },
+        ) ??
+        false;
   }
 
+  // Método corregido para eliminar una cuenta
   void _deleteAccount(BuildContext context, Account account) async {
     try {
       // Mostrar indicador de carga
@@ -297,7 +308,6 @@ class AccountList extends StatelessWidget {
 
       // Extraer accountId del ID completo
       String accountId;
-
       if (account.id.contains('/')) {
         final parts = account.id.split('/');
         accountId = parts[1];
@@ -305,72 +315,72 @@ class AccountList extends StatelessWidget {
         accountId = account.id;
       }
 
-      print('User ID: $userId');
-      print('Account ID: $accountId');
-
       // Llamar al servicio para eliminar la cuenta y sus transacciones
       await _accountService.deleteAccount(userId, accountId);
 
-      // Ocultar el indicador de carga
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      // Verificar si el contexto sigue siendo válido
+      if (!context.mounted) return;
 
-        // Mostrar mensaje de éxito
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.check_circle, color: Colors.white),
-                SizedBox(width: 12),
-                Text("Cuenta eliminada correctamente"),
-              ],
-            ),
-            backgroundColor: Colors.green,
-            behavior: SnackBarBehavior.floating,
+      // Ocultar el indicador de carga actual
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      // Mostrar mensaje de éxito
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.check_circle, color: Colors.white),
+              SizedBox(width: 12),
+              Text("Cuenta eliminada correctamente"),
+            ],
           ),
-        );
-      }
+          backgroundColor: Colors.green,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     } catch (e) {
       print('Error en _deleteAccount: $e');
 
-      // Ocultar el indicador de carga si existe
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).hideCurrentSnackBar();
+      // Verificar si el contexto sigue siendo válido
+      if (!context.mounted) return;
 
-        // Mostrar error con un diseño más informativo
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Row(
-              children: [
-                Icon(Icons.error_outline, color: Colors.white),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    "Error al eliminar la cuenta: ${e.toString()}",
-                    style: TextStyle(color: Colors.white),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
+      // Ocultar el indicador de carga si existe
+      ScaffoldMessenger.of(context).hideCurrentSnackBar();
+
+      // Mostrar error con un diseño más informativo
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              Icon(Icons.error_outline, color: Colors.white),
+              SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  "Error al eliminar la cuenta: ${e.toString()}",
+                  style: TextStyle(color: Colors.white),
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
                 ),
-              ],
-            ),
-            backgroundColor: Colors.red,
-            behavior: SnackBarBehavior.floating,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-            margin: EdgeInsets.only(
-              bottom: MediaQuery.of(context).size.height - 150,
-              left: 16,
-              right: 16,
-            ),
-            duration: Duration(seconds: 3),
+              ),
+            ],
           ),
-        );
-      }
+          backgroundColor: Colors.red,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+          margin: EdgeInsets.only(
+            bottom: MediaQuery.of(context).size.height - 150,
+            left: 16,
+            right: 16,
+          ),
+          duration: Duration(seconds: 3),
+        ),
+      );
     }
   }
 
+  // Método modificado para mostrar opciones de cuenta e incluir navegación al historial
   void _showAccountOptions(BuildContext context, Account account) {
     showModalBottomSheet(
       context: context,
@@ -379,27 +389,17 @@ class AccountList extends StatelessWidget {
           top: Radius.circular(AppTheme.radiusXL),
         ),
       ),
-      builder: (context) {
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingM),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                leading: CircleAvatar(
-                  backgroundColor:
-                      account.color != null
-                          ? Color(
-                            int.parse(
-                                  account.color!.substring(1, 7),
-                                  radix: 16,
-                                ) +
-                                0xFF000000,
-                          ).withOpacity(0.2)
-                          : AppTheme.primaryColor.withOpacity(0.2),
-                  child: Icon(
-                    _getIconData(account.iconName),
-                    color:
+      builder: (bottomSheetContext) {
+        // Usar contexto específico del BottomSheet
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AppTheme.spacingM),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor:
                         account.color != null
                             ? Color(
                               int.parse(
@@ -407,50 +407,98 @@ class AccountList extends StatelessWidget {
                                     radix: 16,
                                   ) +
                                   0xFF000000,
-                            )
-                            : AppTheme.primaryColor,
+                            ).withOpacity(0.2)
+                            : AppTheme.primaryColor.withOpacity(0.2),
+                    child: Icon(
+                      _getIconData(account.iconName),
+                      color:
+                          account.color != null
+                              ? Color(
+                                int.parse(
+                                      account.color!.substring(1, 7),
+                                      radix: 16,
+                                    ) +
+                                    0xFF000000,
+                              )
+                              : AppTheme.primaryColor,
+                    ),
                   ),
+                  title: Text(
+                    account.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  subtitle: Text("${account.type} · ${account.institution}"),
                 ),
-                title: Text(
-                  account.name,
-                  style: const TextStyle(fontWeight: FontWeight.bold),
+                const Divider(),
+                ListTile(
+                  leading: Icon(Icons.edit, color: AppTheme.primaryColor),
+                  title: const Text("Editar cuenta"),
+                  onTap: () {
+                    // Cerrar el BottomSheet y luego editar cuenta
+                    Navigator.pop(bottomSheetContext);
+                    onEditAccount(account);
+                  },
                 ),
-                subtitle: Text("${account.type} · ${account.institution}"),
-              ),
-              const Divider(),
-              ListTile(
-                leading: Icon(Icons.edit, color: AppTheme.primaryColor),
-                title: const Text("Editar cuenta"),
-                onTap: () {
-                  Navigator.pop(context);
-                  onEditAccount(account);
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.history, color: Colors.blue),
-                title: const Text("Ver historial de transacciones"),
-                onTap: () {
-                  Navigator.pop(context);
-                  // Implementar navegación al historial
-                },
-              ),
-              ListTile(
-                leading: const Icon(Icons.delete_outline, color: Colors.red),
-                title: const Text("Eliminar cuenta"),
-                onTap: () async {
-                  Navigator.pop(context);
-                  if (await _confirmDelete(context, account)) {
-                    _deleteAccount(context, account);
-                  }
-                },
-              ),
-            ],
+                ListTile(
+                  leading: const Icon(Icons.history, color: Colors.blue),
+                  title: const Text("Ver historial de transacciones"),
+                  onTap: () {
+                    // Cerrar el BottomSheet primero
+                    Navigator.pop(bottomSheetContext);
+
+                    // Navegamos a la pantalla de historial de transacciones
+                    if (onEditTransaction != null) {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (context) => AccountTransactionsScreen(
+                            userId: userId,
+                            account: account,
+                            onEditTransaction: onEditTransaction!,
+                          ),
+                        ),
+                      );
+                    } else {
+                      // Si no se proporcionó onEditTransaction, mostrar un mensaje
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(
+                          content: Text("No se puede acceder al historial en este momento"),
+                          duration: Duration(seconds: 2),
+                        ),
+                      );
+                    }
+                  },
+                ),
+                ListTile(
+                  leading: const Icon(Icons.delete_outline, color: Colors.red),
+                  title: const Text("Eliminar cuenta"),
+                  onTap: () async {
+                    // Cerrar el BottomSheet primero
+                    Navigator.pop(bottomSheetContext);
+
+                    // Usar un bloque async separado para manejar la confirmación y eliminación
+                    _confirmAndDeleteAccount(context, account);
+                  },
+                ),
+              ],
+            ),
           ),
         );
       },
     );
   }
 
+  // Método separado para confirmar y eliminar una cuenta
+  Future<void> _confirmAndDeleteAccount(
+    BuildContext context,
+    Account account,
+  ) async {
+    // Usar el contexto del widget para el diálogo de confirmación
+    if (await _confirmDelete(context, account)) {
+      _deleteAccount(context, account);
+    }
+  }
+
+  // Método auxiliar para obtener iconos
   IconData _getIconData(String? iconName) {
     switch (iconName) {
       case 'credit_card':
@@ -461,7 +509,7 @@ class AccountList extends StatelessWidget {
         return Icons.account_balance;
       case 'wallet':
         return Icons.account_balance_wallet;
-      case 'money':
+      case 'attach_money':
         return Icons.attach_money;
       default:
         return Icons.account_balance_wallet;

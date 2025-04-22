@@ -5,7 +5,6 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/data/models/category.dart';
 import 'package:chanchi_app/data/models/account.dart';
-import 'package:chanchi_app/services/connectivity_service.dart';
 import 'package:chanchi_app/features/home/domain/services/transaction_list_service.dart';
 import 'package:chanchi_app/core/widgets/transaction_list/empty_state_widget.dart';
 import 'package:chanchi_app/core/widgets/transaction_list/transaction_date_group.dart';
@@ -59,7 +58,6 @@ class TransactionListState extends State<TransactionList> {
   DateTime? _endDate;
 
   StreamSubscription<List<ConnectivityResult>>? _connectivitySubscription;
-  final ConnectivityService _connectivityService = ConnectivityService();
 
   @override
   void initState() {

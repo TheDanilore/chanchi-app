@@ -111,7 +111,7 @@ class _TransferScreenState extends State<TransferScreen> {
   Widget build(BuildContext context) {
     // Filtrar cuentas para transferencia (excluyendo tarjetas de crédito)
     final transferAccounts = widget.accounts
-        .where((account) => !(account.isCreditCard ?? false))
+        .where((account) => !(account.isCreditCard))
         .toList();
 
     return Scaffold(
@@ -136,7 +136,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     value: account,
                     child: Text(
                       '${account.name} - ${CurrencyUtil.format(
-                        amount: account.balance ?? 0, 
+                        amount: account.balance, 
                         currencyCode: account.currencyCode ?? 'PEN'
                       )}',
                     ),
@@ -174,7 +174,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     value: account,
                     child: Text(
                       '${account.name} - ${CurrencyUtil.format(
-                        amount: account.balance ?? 0, 
+                        amount: account.balance, 
                         currencyCode: account.currencyCode ?? 'PEN'
                       )}',
                     ),
@@ -212,7 +212,7 @@ class _TransferScreenState extends State<TransferScreen> {
                     return 'Ingresa un monto válido';
                   }
                   if (_fromAccount != null && 
-                      amount > (_fromAccount!.balance ?? 0)) {
+                      amount > (_fromAccount!.balance)) {
                     return 'Saldo insuficiente';
                   }
                   return null;

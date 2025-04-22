@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/data/models/category.dart';
 import 'package:chanchi_app/data/models/account.dart';

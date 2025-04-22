@@ -11,7 +11,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 class TransactionListService {
   final FirebaseFirestore _firestore;
   final TransactionService _transactionService;
-  final ConnectivityService _connectivityService;
   final String userId;
 
   TransactionListService({
@@ -20,15 +19,8 @@ class TransactionListService {
     TransactionService? transactionService,
     ConnectivityService? connectivityService,
   }) : _firestore = firestore ?? FirebaseFirestore.instance,
-       _transactionService = transactionService ?? TransactionService(),
-       _connectivityService = connectivityService ?? ConnectivityService();
+       _transactionService = transactionService ?? TransactionService();
 
-  Future<void> _enableOfflineCapabilities() async {
-    _firestore.settings = const Settings(
-      persistenceEnabled: true,
-      cacheSizeBytes: Settings.CACHE_SIZE_UNLIMITED,
-    );
-  }
 
   Future<Map<String, Category>> loadCategories() async {
     try {
