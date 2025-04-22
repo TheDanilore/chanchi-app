@@ -7,7 +7,6 @@ import 'package:chanchi_app/core/widgets/expenses_by_category_card.dart';
 import 'package:chanchi_app/core/widgets/income_expense_chart.dart';
 import 'package:chanchi_app/features/home/presentation/widgets/recommendations_card.dart';
 import 'package:chanchi_app/services/budget_service.dart';
-import 'package:chanchi_app/data/models/budget.dart';
 import 'package:chanchi_app/services/category_service.dart';
 import 'package:chanchi_app/data/models/category.dart';
 
@@ -188,7 +187,7 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard> {
 
     // Mostrar el dashboard con datos reales
     return SingleChildScrollView(
-      padding: const EdgeInsets.all(AppTheme.spacingL),
+      padding: const EdgeInsets.all(AppTheme.spacingS),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -250,7 +249,7 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard> {
 
     for (int i = 0; i < sortedCategories.length; i++) {
       final entry = sortedCategories[i];
-      if (i < 4) {
+      if (i < 10) {
         // Obtener nombre y color de la categoría
         String categoryName;
         Color categoryColor;
@@ -383,8 +382,6 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard> {
 
     try {
       // Obtener el mes actual en formato "YYYY-MM"
-      final now = DateTime.now();
-      final currentMonth = "${now.year}-${now.month.toString().padLeft(2, '0')}";
       
       // Crear un Stream para escuchar presupuestos actuales
       _budgetService

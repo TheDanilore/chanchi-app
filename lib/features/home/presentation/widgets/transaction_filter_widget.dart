@@ -305,11 +305,82 @@ class _TransactionFilterWidgetState extends State<TransactionFilterWidget> {
   Widget _buildCategoryFilter() {
     final categories = widget.categoriesCache.values.toList();
 
-    // Ordenar categorías por nombre
-    categories.sort((a, b) => a.name.compareTo(b.name));
+    // Separar categorías por tipo
+    final expenseCategories =
+        categories.where((c) => c.type == 'expense').toList();
+    final incomeCategories =
+        categories.where((c) => c.type == 'income').toList();
 
-    return SizedBox(
-      height: 84,
+    // Ordenar categorías por nombre
+    expenseCategories.sort((a, b) => a.name.compareTo(b.name));
+    incomeCategories.sort((a, b) => a.name.compareTo(b.name));
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        // Sección de Gastos
+        if (expenseCategories.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.arrow_downward,
+                  size: 12,
+                  color: Colors.red.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  "Gastos",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.red.shade700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildCategoryGrid(expenseCategories),
+          const SizedBox(height: 16),
+        ],
+
+        // Sección de Ingresos
+        if (incomeCategories.isNotEmpty) ...[
+          Padding(
+            padding: const EdgeInsets.only(bottom: 8.0),
+            child: Row(
+              children: [
+                Icon(
+                  Icons.arrow_upward,
+                  size: 12,
+                  color: Colors.green.shade700,
+                ),
+                const SizedBox(width: 4),
+                Text(
+                  "Ingresos",
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.green.shade700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          _buildCategoryGrid(incomeCategories),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildCategoryGrid(List<Category> categories) {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
       child: GridView.builder(
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 4,
@@ -319,10 +390,12 @@ class _TransactionFilterWidgetState extends State<TransactionFilterWidget> {
         ),
         itemCount: categories.length,
         shrinkWrap: true,
-        physics: const ClampingScrollPhysics(),
+        padding: const EdgeInsets.all(8),
+        physics: const NeverScrollableScrollPhysics(),
         itemBuilder: (context, index) {
           final category = categories[index];
           final isSelected = widget.selectedCategoryId == category.id;
+          final categoryColor = _getCategoryColor(category.color);
 
           return GestureDetector(
             onTap: () {
@@ -331,39 +404,39 @@ class _TransactionFilterWidgetState extends State<TransactionFilterWidget> {
             child: Container(
               decoration: BoxDecoration(
                 color:
-                    isSelected
-                        ? _getCategoryColor(category.color).withOpacity(0.9)
-                        : _getCategoryColor(category.color).withOpacity(0.1),
+                    isSelected ? categoryColor : categoryColor.withOpacity(0.1),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: _getCategoryColor(
-                    category.color,
-                  ).withOpacity(isSelected ? 0.9 : 0.3),
-                  width: isSelected ? 1.5 : 1,
-                ),
+                boxShadow:
+                    isSelected
+                        ? [
+                          BoxShadow(
+                            color: categoryColor.withOpacity(0.3),
+                            spreadRadius: 1,
+                            blurRadius: 2,
+                            offset: const Offset(0, 1),
+                          ),
+                        ]
+                        : null,
               ),
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
                   Icon(
                     _getCategoryIcon(category.iconName),
-                    color:
-                        isSelected
-                            ? Colors.white
-                            : _getCategoryColor(category.color),
-                    size: 18,
+                    color: isSelected ? Colors.white : categoryColor,
+                    size: 20,
                   ),
-                  const SizedBox(height: 2),
+                  const SizedBox(height: 4),
                   Text(
                     category.name,
                     textAlign: TextAlign.center,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 10,
-                      color:
-                          isSelected ? Colors.white : AppTheme.textPrimaryColor,
                       fontWeight:
                           isSelected ? FontWeight.bold : FontWeight.normal,
+                      color:
+                          isSelected ? Colors.white : AppTheme.textPrimaryColor,
                     ),
                   ),
                 ],
@@ -393,44 +466,60 @@ class _TransactionFilterWidgetState extends State<TransactionFilterWidget> {
       );
     }
 
-    return SizedBox(
-      height: 36,
-      child: ListView.builder(
-        scrollDirection: Axis.horizontal,
-        itemCount: accounts.length,
-        itemBuilder: (context, index) {
-          final account = accounts[index];
-          final isSelected = widget.selectedAccountId == account.id;
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: SizedBox(
+        height: 36,
+        child: ListView.builder(
+          scrollDirection: Axis.horizontal,
+          itemCount: accounts.length,
+          itemBuilder: (context, index) {
+            final account = accounts[index];
+            final isSelected = widget.selectedAccountId == account.id;
 
-          return GestureDetector(
-            onTap: () {
-              widget.onAccountSelected(isSelected ? null : account.id);
-            },
-            child: Container(
-              margin: const EdgeInsets.only(right: 8),
-              padding: const EdgeInsets.symmetric(horizontal: 10),
-              decoration: BoxDecoration(
-                color:
-                    isSelected ? AppTheme.primaryColor : Colors.grey.shade100,
-                borderRadius: BorderRadius.circular(18),
-                border: Border.all(
+            return GestureDetector(
+              onTap: () {
+                widget.onAccountSelected(isSelected ? null : account.id);
+              },
+              child: Container(
+                margin: const EdgeInsets.only(right: 8),
+                padding: const EdgeInsets.symmetric(horizontal: 12),
+                decoration: BoxDecoration(
                   color:
-                      isSelected ? AppTheme.primaryColor : Colors.grey.shade300,
-                  width: 1,
+                      isSelected ? AppTheme.primaryColor : Colors.grey.shade100,
+                  borderRadius: BorderRadius.circular(18),
+                  boxShadow:
+                      isSelected
+                          ? [
+                            BoxShadow(
+                              color: AppTheme.primaryColor.withOpacity(0.3),
+                              blurRadius: 2,
+                              spreadRadius: 0,
+                              offset: const Offset(0, 1),
+                            ),
+                          ]
+                          : null,
+                ),
+                alignment: Alignment.center,
+                child: Text(
+                  account.name,
+                  style: TextStyle(
+                    fontSize: 12,
+                    color:
+                        isSelected ? Colors.white : AppTheme.textPrimaryColor,
+                    fontWeight:
+                        isSelected ? FontWeight.bold : FontWeight.normal,
+                  ),
                 ),
               ),
-              alignment: Alignment.center,
-              child: Text(
-                account.name,
-                style: TextStyle(
-                  fontSize: 12,
-                  color: isSelected ? Colors.white : AppTheme.textPrimaryColor,
-                  fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                ),
-              ),
-            ),
-          );
-        },
+            );
+          },
+        ),
       ),
     );
   }
@@ -455,71 +544,86 @@ class _TransactionFilterWidgetState extends State<TransactionFilterWidget> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         // Botones para filtrar por semanas
-        SizedBox(
-          height: 32,
-          child: ListView.builder(
-            scrollDirection: Axis.horizontal,
-            itemCount: weeks.length,
-            itemBuilder: (context, index) {
-              final weekRange = weeks[index];
-              final start = weekRange.item1;
-              final end = weekRange.item2;
+        Container(
+          padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: Colors.grey.shade200),
+          ),
+          child: SizedBox(
+            height: 32,
+            child: ListView.builder(
+              scrollDirection: Axis.horizontal,
+              itemCount: weeks.length,
+              itemBuilder: (context, index) {
+                final weekRange = weeks[index];
+                final start = weekRange.item1;
+                final end = weekRange.item2;
 
-              // Verificar si esta semana está seleccionada
-              final bool isSelected =
-                  widget.startDate != null &&
-                  widget.endDate != null &&
-                  isSameDay(widget.startDate!, start) &&
-                  isSameDay(widget.endDate!, end);
+                // Verificar si esta semana está seleccionada
+                final bool isSelected =
+                    widget.startDate != null &&
+                    widget.endDate != null &&
+                    isSameDay(widget.startDate!, start) &&
+                    isSameDay(widget.endDate!, end);
 
-              return GestureDetector(
-                onTap: () {
-                  if (isSelected) {
-                    widget.onDateRangeSelected(null, null);
-                  } else {
-                    widget.onDateRangeSelected(
-                      DateTime(start.year, start.month, start.day, 0, 0, 0),
-                      DateTime(end.year, end.month, end.day, 23, 59, 59),
-                    );
-                  }
-                },
-                child: Container(
-                  margin: const EdgeInsets.only(right: 8),
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color:
-                        isSelected
-                            ? AppTheme.primaryColor
-                            : Colors.grey.shade100,
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
+                return GestureDetector(
+                  onTap: () {
+                    if (isSelected) {
+                      widget.onDateRangeSelected(null, null);
+                    } else {
+                      widget.onDateRangeSelected(
+                        DateTime(start.year, start.month, start.day, 0, 0, 0),
+                        DateTime(end.year, end.month, end.day, 23, 59, 59),
+                      );
+                    }
+                  },
+                  child: Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
                       color:
                           isSelected
                               ? AppTheme.primaryColor
-                              : Colors.grey.shade300,
+                              : Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow:
+                          isSelected
+                              ? [
+                                BoxShadow(
+                                  color: AppTheme.primaryColor.withOpacity(0.3),
+                                  blurRadius: 2,
+                                  spreadRadius: 0,
+                                  offset: const Offset(0, 1),
+                                ),
+                              ]
+                              : null,
+                    ),
+                    alignment: Alignment.center,
+                    child: Text(
+                      "Semana ${index + 1}",
+                      style: TextStyle(
+                        fontSize: 11,
+                        color:
+                            isSelected
+                                ? Colors.white
+                                : AppTheme.textPrimaryColor,
+                        fontWeight:
+                            isSelected ? FontWeight.bold : FontWeight.normal,
+                      ),
                     ),
                   ),
-                  alignment: Alignment.center,
-                  child: Text(
-                    "Semana ${index + 1}",
-                    style: TextStyle(
-                      fontSize: 11,
-                      color:
-                          isSelected ? Colors.white : AppTheme.textPrimaryColor,
-                      fontWeight:
-                          isSelected ? FontWeight.bold : FontWeight.normal,
-                    ),
-                  ),
-                ),
-              );
-            },
+                );
+              },
+            ),
           ),
         ),
 
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
 
         // Botón para seleccionar rango personalizado
         OutlinedButton.icon(
@@ -607,7 +711,7 @@ class _TransactionFilterWidgetState extends State<TransactionFilterWidget> {
               borderRadius: BorderRadius.circular(8),
             ),
             minimumSize: const Size(double.infinity, 32),
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 0),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 0),
           ),
         ),
       ],
@@ -682,10 +786,18 @@ class _TransactionFilterWidgetState extends State<TransactionFilterWidget> {
         return Icons.attach_money;
       case 'payments':
         return Icons.payments;
+      case 'payment':
+        return Icons.payment;
+      case 'airplanemode_active_sharp':
+        return Icons.airplanemode_active_sharp;
+      case 'cruelty_free_outlined':
+        return Icons.cruelty_free_outlined;
       default:
         return Icons.category;
     }
   }
+
+
 }
 
 // Clase auxiliar para manejar tuplas

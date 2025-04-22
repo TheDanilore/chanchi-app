@@ -1,7 +1,10 @@
 // lib/features/home/presentation/providers/home_provider.dart
 import 'dart:async';
 import 'package:chanchi_app/core/utils/error_handler.dart';
+import 'package:chanchi_app/data/models/account.dart';
+import 'package:chanchi_app/data/models/category.dart';
 import 'package:chanchi_app/features/home/domain/services/home_service.dart';
+import 'package:chanchi_app/features/home/domain/services/transaction_list_service.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -41,18 +44,6 @@ class HomeProvider extends ChangeNotifier {
   String get userId => _auth.currentUser?.uid ?? '';
   DateTime get selectedMonth => _selectedMonth;
 
-  // Inicialización
-  void initialize() {
-    _checkConnectivity();
-    _updatePendingOperationsCount();
-
-    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
-      results,
-    ) {
-      _checkConnectivity();
-    });
-  }
-
   @override
   void dispose() {
     _isActive = false;
@@ -69,11 +60,20 @@ class HomeProvider extends ChangeNotifier {
 
   // Métodos
   void onItemTapped(int index) {
-    _selectedIndex = index;
-    _safeNotifyListeners();
+    try {
+      _selectedIndex = index;
 
-    if (index == 0) {
-      loadTransactions();
+      if (index == 0) {
+        loadTransactions();
+      }
+
+      // Only notify listeners once at the end
+      _safeNotifyListeners();
+    } catch (e) {
+      print('Error in onItemTapped: $e');
+      // Ensure the state is updated even if there's an error
+      _selectedIndex = index;
+      _safeNotifyListeners();
     }
   }
 
@@ -86,6 +86,68 @@ class HomeProvider extends ChangeNotifier {
     _showFinancialSummary = !_showFinancialSummary;
     _safeNotifyListeners();
   }
+
+  // En HomeProvider:
+  Map<String, Category> _categoriesCache = {};
+  Map<String, Account> _accountsCache = {};
+
+  // Y métodos getter:
+  Map<String, Category> get categoriesCache => _categoriesCache;
+  Map<String, Account> get accountsCache => _accountsCache;
+
+  // Y cargar los datos en initialize()
+  void initialize() {
+    _checkConnectivity();
+    _updatePendingOperationsCount();
+    _loadCategoriesAndAccounts();
+
+    _connectivitySubscription = Connectivity().onConnectivityChanged.listen((
+      results,
+    ) {
+      _checkConnectivity();
+    });
+  }
+
+  Future<void> _loadCategoriesAndAccounts() async {
+    final service = TransactionListService(userId: userId);
+    _categoriesCache = await service.loadCategories();
+    _accountsCache = await service.loadAccounts();
+    notifyListeners();
+  }
+
+  void updateCategoryFilter(String? categoryId) {
+    _selectedCategoryId = categoryId;
+    _safeNotifyListeners();
+    loadTransactions(); // Recargar con el nuevo filtro
+  }
+
+  void updateAccountFilter(String? accountId) {
+    _selectedAccountId = accountId;
+    _safeNotifyListeners();
+    loadTransactions(); // Recargar con el nuevo filtro
+  }
+
+  void updateDateRangeFilter(DateTime? start, DateTime? end) {
+    _startDate = start;
+    _endDate = end;
+    _safeNotifyListeners();
+    loadTransactions(); // Recargar con el nuevo filtro
+  }
+
+  void clearFilters() {
+    _selectedCategoryId = null;
+    _selectedAccountId = null;
+    _startDate = null;
+    _endDate = null;
+    _safeNotifyListeners();
+    loadTransactions(); // Recargar sin filtros
+  }
+
+  // Exponer también getters para estos filtros
+  String? get selectedCategoryId => _selectedCategoryId;
+  String? get selectedAccountId => _selectedAccountId;
+  DateTime? get startDate => _startDate;
+  DateTime? get endDate => _endDate;
 
   Future<void> _updatePendingOperationsCount() async {
     if (_auth.currentUser != null) {
@@ -117,7 +179,6 @@ class HomeProvider extends ChangeNotifier {
     _safeNotifyListeners();
 
     try {
-      final success = await _homeService.attemptSync();
       // El resultado se maneja en la UI
       await _updatePendingOperationsCount();
     } catch (e) {
@@ -130,14 +191,14 @@ class HomeProvider extends ChangeNotifier {
 
   Future<void> loadTransactions() async {
     if (!_isActive) return;
-    
+
     _safeNotifyListeners();
     await _updatePendingOperationsCount();
   }
 
   Future<void> refreshData() async {
     if (!_isActive) return;
-    
+
     await loadTransactions();
 
     if (_isOffline && _pendingOperationsCount > 0) {
@@ -149,7 +210,7 @@ class HomeProvider extends ChangeNotifier {
 
   void changeMonth(DateTime newMonth) {
     if (!_isActive) return;
-    
+
     _selectedMonth = DateTime(newMonth.year, newMonth.month, 1);
     _startDate = DateTime(
       _selectedMonth.year,

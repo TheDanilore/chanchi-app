@@ -1,3 +1,4 @@
+import 'package:chanchi_app/core/utils/icon_utils.dart';
 import 'package:chanchi_app/features/accounts/presentation/screens/account_transactions_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:chanchi_app/data/models/account.dart';
@@ -700,6 +701,13 @@ class _AddAccountScreenState extends State<AddAccountScreen> {
   }
 
   // Método auxiliar para obtener el ícono del tipo de cuenta
+    IconData _getIconData(String? iconName) {
+    return IconUtils.getIconByName(
+      iconName,
+      // You can provide a fallback type if needed
+      fallbackType: 'account',
+    );
+    }
   IconData _getAccountTypeIcon(String accountType) {
     switch (accountType) {
       case 'cash':

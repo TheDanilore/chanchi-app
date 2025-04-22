@@ -1,3 +1,4 @@
+import 'package:chanchi_app/core/utils/icon_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart' hide Transaction;
 import 'package:intl/intl.dart';
@@ -205,15 +206,14 @@ class TransactionCard extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (onEdit != null)
-                  ListTile(
-                    leading: Icon(Icons.edit, color: AppTheme.primaryColor),
-                    title: const Text('Editar transacción'),
-                    onTap: () {
-                      Navigator.pop(context);
-                      onEdit(transaction, docId);
-                    },
-                  ),
+                ListTile(
+                  leading: Icon(Icons.edit, color: AppTheme.primaryColor),
+                  title: const Text('Editar transacción'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    onEdit(transaction, docId);
+                  },
+                ),
                 if (onDuplicate != null)
                   ListTile(
                     leading: const Icon(Icons.copy, color: Colors.blue),
@@ -242,29 +242,11 @@ class TransactionCard extends StatelessWidget {
   }
 
   IconData _getCategoryIcon() {
-    const iconMap = {
-      'shopping_cart': Icons.shopping_cart,
-      'restaurant': Icons.restaurant,
-      'home': Icons.home,
-      'directions_car': Icons.directions_car,
-      'local_hospital': Icons.local_hospital,
-      'school': Icons.school,
-      'sports_esports': Icons.sports_esports,
-      'work': Icons.work,
-      'credit_card': Icons.credit_card,
-      'savings': Icons.savings,
-      'attach_money': Icons.attach_money,
-      'category': Icons.category,
-      'shop_sharp': Icons.shop_sharp,
-    };
-
-    if (category?.iconName != null && iconMap.containsKey(category!.iconName)) {
-      return iconMap[category!.iconName]!;
-    }
-
-    return transaction['type'] == 'expense'
-        ? Icons.arrow_upward
-        : Icons.arrow_downward;
+    // Use IconUtils to get the icon
+    return IconUtils.getIconByName(
+      category?.iconName,
+      fallbackType: transaction['type'] == 'expense' ? 'expense' : 'income',
+    );
   }
 
   String _getCurrencySymbol(String currencyCode) {

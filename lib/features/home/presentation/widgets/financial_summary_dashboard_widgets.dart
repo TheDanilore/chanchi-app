@@ -285,8 +285,6 @@ class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
         }
 
         final savings = totalIncome - totalExpense;
-        final savingsColor =
-            savings >= 0 ? AppTheme.successColor : AppTheme.errorColor;
 
         return Column(
           children: [

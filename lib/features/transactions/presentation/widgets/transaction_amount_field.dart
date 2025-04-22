@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/core/utils/currency_util.dart';
-import 'package:chanchi_app/core/widgets/calculator_widget.dart';
 
 class TransactionAmountField extends StatelessWidget {
   final TextEditingController amountController;

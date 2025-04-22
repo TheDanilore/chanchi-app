@@ -1,3 +1,4 @@
+import 'package:chanchi_app/core/utils/icon_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/data/models/category.dart';
@@ -6,14 +7,16 @@ import 'package:chanchi_app/services/category_service.dart';
 class CategorySelectorWidget extends StatefulWidget {
   final String? selectedCategoryId;
   final String transactionType;
+  final Category? category;
   final Function(String?) onCategorySelected;
 
   const CategorySelectorWidget({
-    Key? key,
+    super.key,
     required this.selectedCategoryId,
     required this.transactionType,
     required this.onCategorySelected,
-  }) : super(key: key);
+    this.category,
+  });
 
   @override
   _CategorySelectorWidgetState createState() => _CategorySelectorWidgetState();
@@ -169,7 +172,13 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget> {
                         }
                       },
                       avatar: Icon(
-                        _getCategoryIcon(category.iconName),
+                        // Use IconUtils to get the icon
+                        IconUtils.getIconByName(
+                          category.iconName,
+                          fallbackType: widget.transactionType == 'expense' 
+                              ? 'expense' 
+                              : 'income'
+                        ),
                         size: 18,
                         color: isSelected ? Colors.white : color,
                       ),
@@ -191,37 +200,5 @@ class _CategorySelectorWidgetState extends State<CategorySelectorWidget> {
         ),
       ],
     );
-  }
-
-  IconData _getCategoryIcon(String iconName) {
-    switch (iconName) {
-      case 'shopping_cart':
-        return Icons.shopping_cart;
-      case 'restaurant':
-        return Icons.restaurant;
-      case 'home':
-        return Icons.home;
-      case 'directions_car':
-        return Icons.directions_car;
-      case 'local_hospital':
-        return Icons.local_hospital;
-      case 'school':
-        return Icons.school;
-      case 'sports_esports':
-        return Icons.sports_esports;
-      case 'work':
-        return Icons.work;
-      case 'credit_card':
-        return Icons.credit_card;
-      case 'shop_sharp':
-        return Icons.shop_sharp;
-      case 'savings':
-        return Icons.savings;
-      case 'attach_money':
-        return Icons.attach_money;
-      case 'category':
-      default:
-        return Icons.category;
-    }
   }
 }

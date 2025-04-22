@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'package:chanchi_app/features/home/presentation/widgets/transaction_filter_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:chanchi_app/core/config/theme.dart';
@@ -216,28 +215,6 @@ class TransactionListState extends State<TransactionList> {
     });
   }
 
-  void _onCategorySelected(String? categoryId) {
-    setState(() {
-      _selectedCategoryId = categoryId;
-    });
-    _applyFilters();
-  }
-
-  void _onAccountSelected(String? accountId) {
-    setState(() {
-      _selectedAccountId = accountId;
-    });
-    _applyFilters();
-  }
-
-  void _onDateRangeSelected(DateTime? startDate, DateTime? endDate) {
-    setState(() {
-      _startDate = startDate;
-      _endDate = endDate;
-    });
-    _applyFilters();
-  }
-
   void _onClearFilters() {
     setState(() {
       _selectedCategoryId = null;
@@ -289,47 +266,16 @@ class TransactionListState extends State<TransactionList> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return Column(
-      children: [
-        // Componente de filtros
-        Padding(
-          padding: const EdgeInsets.fromLTRB(
-            AppTheme.spacingL,
-            0,
-            AppTheme.spacingL,
-            AppTheme.spacingM,
-          ),
-          child: TransactionFilterWidget(
-            userId: widget.userId,
-            onCategorySelected: _onCategorySelected,
-            onAccountSelected: _onAccountSelected,
-            onDateRangeSelected: _onDateRangeSelected,
-            onClearFilters: _onClearFilters,
-            selectedCategoryId: _selectedCategoryId,
-            selectedAccountId: _selectedAccountId,
-            startDate: _startDate,
-            endDate: _endDate,
-            selectedMonth: widget.selectedMonth,
-            categoriesCache: _categoriesCache,
-            accountsCache: _accountsCache,
-          ),
-        ),
-
-        // Lista de transacciones
-        Expanded(
-          child:
-              _filteredTransactions.isEmpty
-                  ? EmptyStateWidget(
-                    isFiltered:
-                        _selectedCategoryId != null ||
-                        _selectedAccountId != null ||
-                        _startDate != null,
-                    onClearFilters: _onClearFilters,
-                  )
-                  : _buildTransactionList(),
-        ),
-      ],
-    );
+    // Eliminamos el componente de filtros y solo dejamos la lista
+    return _filteredTransactions.isEmpty
+        ? EmptyStateWidget(
+          isFiltered:
+              _selectedCategoryId != null ||
+              _selectedAccountId != null ||
+              _startDate != null,
+          onClearFilters: _onClearFilters,
+        )
+        : _buildTransactionList();
   }
 
   Widget _buildTransactionList() {

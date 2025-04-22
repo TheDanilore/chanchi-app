@@ -1,4 +1,5 @@
 import 'package:chanchi_app/core/config/theme.dart';
+import 'package:chanchi_app/core/utils/icon_utils.dart';
 import 'package:flutter/material.dart';
 import 'package:chanchi_app/data/models/account.dart';
 import 'package:chanchi_app/features/accounts/domain/services/account_service.dart';
@@ -450,18 +451,21 @@ class AccountList extends StatelessWidget {
                     if (onEditTransaction != null) {
                       Navigator.of(context).push(
                         MaterialPageRoute(
-                          builder: (context) => AccountTransactionsScreen(
-                            userId: userId,
-                            account: account,
-                            onEditTransaction: onEditTransaction!,
-                          ),
+                          builder:
+                              (context) => AccountTransactionsScreen(
+                                userId: userId,
+                                account: account,
+                                onEditTransaction: onEditTransaction!,
+                              ),
                         ),
                       );
                     } else {
                       // Si no se proporcionó onEditTransaction, mostrar un mensaje
                       ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(
-                          content: Text("No se puede acceder al historial en este momento"),
+                          content: Text(
+                            "No se puede acceder al historial en este momento",
+                          ),
                           duration: Duration(seconds: 2),
                         ),
                       );
@@ -498,21 +502,11 @@ class AccountList extends StatelessWidget {
     }
   }
 
-  // Método auxiliar para obtener iconos
   IconData _getIconData(String? iconName) {
-    switch (iconName) {
-      case 'credit_card':
-        return Icons.credit_card;
-      case 'savings':
-        return Icons.savings;
-      case 'account_balance':
-        return Icons.account_balance;
-      case 'wallet':
-        return Icons.account_balance_wallet;
-      case 'attach_money':
-        return Icons.attach_money;
-      default:
-        return Icons.account_balance_wallet;
-    }
+    return IconUtils.getIconByName(
+      iconName,
+      // You can provide a fallback type if needed
+      fallbackType: 'account',
+    );
   }
 }

@@ -198,7 +198,17 @@ class _HomeScreenState extends State<HomeScreen>
       currentIndex: provider.selectedIndex,
       selectedItemColor: AppTheme.primaryColor,
       unselectedItemColor: AppTheme.textSecondaryColor,
-      onTap: provider.onItemTapped,
+      onTap: (index) {
+        try {
+          provider.onItemTapped(index);
+        } catch (e) {
+          print('Error during tab selection: $e');
+          // Optionally set the index directly here as a fallback
+          // setState(() {
+          //   provider.selectedIndex = index;
+          // });
+        }
+      },
     );
   }
 }

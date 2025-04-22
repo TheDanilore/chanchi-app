@@ -57,9 +57,6 @@ class AnimatedBalanceWidget extends StatelessWidget {
   // Método más robusto para manejar valores del balance
   double _ensureSafeBalance(double value) {
     // Manejar valores nulos, NaN o infinitos de manera más segura
-    if (value == null) return 0.0;
-    
-    // Verificación explícita de NaN e infinito
     if (value.isNaN) return 0.0;
     if (value.isInfinite) return 0.0;
 

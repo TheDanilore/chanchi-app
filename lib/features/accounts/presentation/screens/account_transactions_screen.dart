@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:chanchi_app/core/utils/icon_utils.dart'; // Import IconUtils
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/data/models/account.dart';
 import 'package:chanchi_app/core/utils/currency_util.dart';
@@ -19,12 +20,14 @@ class AccountTransactionsScreen extends StatefulWidget {
   }) : super(key: key);
 
   @override
-  State<AccountTransactionsScreen> createState() => _AccountTransactionsScreenState();
+  State<AccountTransactionsScreen> createState() =>
+      _AccountTransactionsScreenState();
 }
 
 class _AccountTransactionsScreenState extends State<AccountTransactionsScreen> {
   DateTime _selectedMonth = DateTime.now();
-  final GlobalKey<TransactionListState> _transactionListKey = GlobalKey<TransactionListState>();
+  final GlobalKey<TransactionListState> _transactionListKey =
+      GlobalKey<TransactionListState>();
 
   // Method to get account color
   Color _getAccountColor(String? colorHex) {
@@ -34,266 +37,253 @@ class _AccountTransactionsScreenState extends State<AccountTransactionsScreen> {
     return AppTheme.primaryColor;
   }
 
+  // Method to handle transaction editing
+  void _handleEditTransaction(Map<String, dynamic> transaction, String docId) {
+    // Navegamos a la pantalla de edición y refrescamos los datos al volver
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute(
+            builder: (context) => AddTransactionScreen(
+              userId: widget.userId,
+              transaction: transaction,
+              docId: docId,
+              isEditing: true,
+              account: widget.account,
+            ),
+          ),
+        )
+        .then((_) {
+          if (_transactionListKey.currentState != null && mounted) {
+            _transactionListKey.currentState!.loadData();
+          }
+        });
+  }
+
   @override
   Widget build(BuildContext context) {
     final accountColor = _getAccountColor(widget.account.color);
     final formatter = DateFormat('MMMM yyyy', 'es');
-    formatter.format(_selectedMonth);
-    
+    final formattedMonth = formatter.format(_selectedMonth);
+
     return Scaffold(
       backgroundColor: Colors.white,
-      body: CustomScrollView(
-        slivers: [
-          // Elegant SliverAppBar with account details
-          SliverAppBar(
-            expandedHeight: 250,
-            floating: false,
-            pinned: true,
-            backgroundColor: accountColor,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: [
-                      accountColor,
-                      accountColor.withOpacity(0.7),
-                    ],
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+      appBar: AppBar(
+        backgroundColor: accountColor,
+        foregroundColor: Colors.white,
+        title: Text('Historial'),
+        elevation: 0,
+      ),
+      body: Column(
+        children: [
+          // Sección del saldo con color de cuenta e icono
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(16),
+            color: accountColor,
+            child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // Icono de la cuenta
+                Container(
+                  width: 50,
+                  height: 50,
+                  decoration: BoxDecoration(
+                    color: Colors.white.withOpacity(0.2),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(
+                    // Use IconUtils to get the icon
+                    IconUtils.getIconByName(
+                      widget.account.iconName, 
+                      fallbackType: widget.account.type // Use account type as fallback
+                    ),
+                    color: Colors.white,
+                    size: 28,
                   ),
                 ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 20),
+                const SizedBox(width: 16),
+                // Información de la cuenta
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        widget.account.name,
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      Text(
+                        widget.account.institution,
+                        style: TextStyle(
+                          color: Colors.white.withOpacity(0.9),
+                          fontSize: 14,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          Text(
+                            'Saldo actual:',
+                            style: TextStyle(
+                              color: Colors.white.withOpacity(0.9),
+                              fontSize: 14,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Text(
+                            CurrencyUtil.format(
+                              amount: widget.account.balance,
+                              currencyCode:
+                                  widget.account.currencyCode ?? 'PEN',
+                            ),
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          // Resto del código permanece igual...
+          // Selector de mes, lista de transacciones, etc.
+          Container(
+            color: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                IconButton(
+                  icon: Icon(Icons.chevron_left, color: accountColor),
+                  onPressed: () {
+                    setState(() {
+                      _selectedMonth = DateTime(
+                        _selectedMonth.year,
+                        _selectedMonth.month - 1,
+                        1,
+                      );
+                    });
+                  },
+                ),
+                Text(
+                  formattedMonth[0].toUpperCase() + formattedMonth.substring(1),
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: accountColor,
+                  ),
+                ),
+                IconButton(
+                  icon: Icon(Icons.chevron_right, color: accountColor),
+                  onPressed: () {
+                    final now = DateTime.now();
+                    final nextMonth = DateTime(
+                      _selectedMonth.year,
+                      _selectedMonth.month + 1,
+                      1,
+                    );
+
+                    if (nextMonth.year < now.year ||
+                        (nextMonth.year == now.year &&
+                            nextMonth.month <= now.month)) {
+                      setState(() {
+                        _selectedMonth = nextMonth;
+                      });
+                    }
+                  },
+                ),
+              ],
+            ),
+          ),
+
+          // Divisor
+          Divider(height: 1, thickness: 1, color: Colors.grey[200]),
+
+          // Lista de transacciones
+          Expanded(
+            child: Builder(
+              builder: (context) {
+                try {
+                  return TransactionList(
+                    key: _transactionListKey,
+                    userId: widget.userId,
+                    onEditTransaction: _handleEditTransaction,
+                    selectedAccountId: widget.account.id,
+                    selectedMonth: _selectedMonth,
+                    onError: (message) {
+                      if (context.mounted) {
+                        ScaffoldMessenger.of(
+                          context,
+                        ).showSnackBar(SnackBar(content: Text(message)));
+                      }
+                    },
+                    onRefresh: () {
+                      if (mounted) {
+                        setState(() {});
+                      }
+                    },
+                  );
+                } catch (e) {
+                  return Center(
                     child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                          children: [
-                            Container(
-                              decoration: BoxDecoration(
-                                color: Colors.white.withOpacity(0.2),
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                              padding: const EdgeInsets.all(12),
-                              child: Icon(
-                                _getAccountIcon(widget.account.iconName),
-                                color: Colors.white,
-                                size: 36,
-                              ),
-                            ),
-                            Text(
-                              widget.account.name,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontSize: 20,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 16),
+                        Icon(Icons.error_outline, size: 36, color: Colors.red),
+                        SizedBox(height: 16),
                         Text(
-                          widget.account.institution,
-                          style: TextStyle(
-                            color: Colors.white.withOpacity(0.8),
-                            fontSize: 16,
-                          ),
+                          'Error al cargar las transacciones',
+                          style: TextStyle(fontSize: 16),
                         ),
-                        const SizedBox(height: 16),
-                        Text(
-                          CurrencyUtil.format(
-                            amount: widget.account.balance, 
-                            currencyCode: 'PEN'
-                          ),
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 32,
-                            fontWeight: FontWeight.bold,
-                            shadows: [
-                              Shadow(
-                                blurRadius: 10.0,
-                                color: Colors.black45,
-                                offset: const Offset(2.0, 2.0),
-                              ),
-                            ],
+                        SizedBox(height: 8),
+                        ElevatedButton(
+                          onPressed: () => setState(() {}),
+                          child: Text('Reintentar'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: accountColor,
+                            foregroundColor: Colors.white,
                           ),
                         ),
                       ],
                     ),
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // Month Selector with improved design
-          SliverPersistentHeader(
-            pinned: true,
-            delegate: _MonthSelectorDelegate(
-              minHeight: 60,
-              maxHeight: 60,
-              selectedMonth: _selectedMonth,
-              accountColor: accountColor,
-              onPreviousMonth: () {
-                setState(() {
-                  _selectedMonth = DateTime(
-                    _selectedMonth.year,
-                    _selectedMonth.month - 1,
-                    1,
                   );
-                });
-              },
-              onNextMonth: () {
-                final now = DateTime.now();
-                final nextMonth = DateTime(
-                  _selectedMonth.year,
-                  _selectedMonth.month + 1,
-                  1,
-                );
-                
-                if (nextMonth.year < now.year || 
-                    (nextMonth.year == now.year && nextMonth.month <= now.month)) {
-                  setState(() {
-                    _selectedMonth = nextMonth;
-                  });
                 }
               },
             ),
           ),
-          
-          // Transaction List with improved padding and design
-          SliverPadding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            sliver: SliverToBoxAdapter(
-              child: TransactionList(
-                key: _transactionListKey,
-                userId: widget.userId,
-                onEditTransaction: widget.onEditTransaction,
-                selectedAccountId: widget.account.id,
-                selectedMonth: _selectedMonth,
-                onError: (message) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text(message)),
-                  );
-                },
-                onRefresh: () {
-                  setState(() {});
-                },
-              ),
-            ),
-          ),
         ],
       ),
-      
-      // Floating Action Button with account color
+
+      // Botón simple para añadir transacción
       floatingActionButton: FloatingActionButton(
         onPressed: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => AddTransactionScreen(
-                userId: widget.userId,
-                account: widget.account,
-              ),
-            ),
-          );
+          Navigator.of(context)
+              .push(
+                MaterialPageRoute(
+                  builder:
+                      (context) => AddTransactionScreen(
+                        userId: widget.userId,
+                        account: widget.account,
+                      ),
+                ),
+              )
+              .then((_) {
+                if (_transactionListKey.currentState != null && mounted) {
+                  _transactionListKey.currentState!.loadData();
+                }
+              });
         },
         backgroundColor: accountColor,
-        elevation: 6,
         child: const Icon(Icons.add, color: Colors.white),
       ),
     );
-  }
-
-  // Helper method to get account icon
-  IconData _getAccountIcon(String? iconName) {
-    switch (iconName) {
-      case 'credit_card':
-        return Icons.credit_card;
-      case 'savings':
-        return Icons.savings;
-      case 'account_balance':
-        return Icons.account_balance;
-      case 'wallet':
-        return Icons.account_balance_wallet;
-      case 'attach_money':
-        return Icons.attach_money;
-      default:
-        return Icons.account_balance_wallet;
-    }
-  }
-}
-
-// Custom persistent header delegate for month selector
-class _MonthSelectorDelegate extends SliverPersistentHeaderDelegate {
-  final double minHeight;
-  final double maxHeight;
-  final DateTime selectedMonth;
-  final Color accountColor;
-  final VoidCallback onPreviousMonth;
-  final VoidCallback onNextMonth;
-
-  _MonthSelectorDelegate({
-    required this.minHeight,
-    required this.maxHeight,
-    required this.selectedMonth,
-    required this.accountColor,
-    required this.onPreviousMonth,
-    required this.onNextMonth,
-  });
-
-  @override
-  Widget build(
-    BuildContext context, 
-    double shrinkOffset, 
-    bool overlapsContent
-  ) {
-    final formatter = DateFormat('MMMM yyyy', 'es');
-    final formattedMonth = formatter.format(selectedMonth);
-
-    return Container(
-      color: Colors.white,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          IconButton(
-            icon: Icon(
-              Icons.chevron_left, 
-              color: accountColor,
-            ),
-            onPressed: onPreviousMonth,
-          ),
-          Text(
-            formattedMonth[0].toUpperCase() + formattedMonth.substring(1),
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.bold,
-              color: accountColor,
-            ),
-          ),
-          IconButton(
-            icon: Icon(
-              Icons.chevron_right, 
-              color: accountColor,
-            ),
-            onPressed: onNextMonth,
-          ),
-        ],
-      ),
-    );
-  }
-
-  @override
-  double get maxExtent => maxHeight;
-
-  @override
-  double get minExtent => minHeight;
-
-  @override
-  bool shouldRebuild(SliverPersistentHeaderDelegate oldDelegate) {
-    return true;
   }
 }
