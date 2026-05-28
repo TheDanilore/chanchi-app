@@ -16,12 +16,13 @@ class AccountCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final bool isCreditCard = account.isCreditCard || account.type == 'credit_card';
     final Color accountColor = account.color != null
         ? Color(int.parse(account.color!.substring(1, 7), radix: 16) + 0xFF000000)
         : AppTheme.primaryColor;
 
     // Mostrar distinto si es tarjeta de crédito
-    if (account.isCreditCard) {
+    if (isCreditCard) {
       return _buildCreditCardItem(context, accountColor);
     } else {
       return _buildRegularAccountItem(context, accountColor);
@@ -108,17 +109,8 @@ class AccountCard extends StatelessWidget {
     final double? usagePercentage = account.creditUsagePercentage;
     final double availableCredit = account.availableBalance;
     
-    // Determinar el color según el porcentaje de uso
-    Color usageColor = Colors.green;
-    if (usagePercentage != null) {
-      if (usagePercentage > 90) {
-        usageColor = Colors.red;
-      } else if (usagePercentage > 70) {
-        usageColor = Colors.orange;
-      } else if (usagePercentage > 50) {
-        usageColor = Colors.amber;
-      }
-    }
+    // Force credit card consumption color to red to indicate debt/usage
+    final Color usageColor = AppTheme.errorColor;
 
     return Card(
       elevation: 3,
@@ -194,6 +186,7 @@ class AccountCard extends StatelessWidget {
                         ),
                         style: Theme.of(context).textTheme.titleMedium?.copyWith(
                           fontWeight: FontWeight.bold,
+                          color: AppTheme.errorColor,
                         ),
                       ),
                       Text(
@@ -216,7 +209,7 @@ class AccountCard extends StatelessWidget {
                     LinearProgressIndicator(
                       value: account.balance / account.creditLimit!,
                       backgroundColor: Colors.grey[200],
-                      valueColor: AlwaysStoppedAnimation<Color>(usageColor),
+                      valueColor: AlwaysStoppedAnimation<Color>(AppTheme.errorColor),
                       minHeight: 5,
                     ),
                     Padding(

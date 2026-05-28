@@ -719,7 +719,9 @@ class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                     final data = doc.data() as Map<String, dynamic>;
                     final balance = (data['balance'] ?? 0.0).toDouble();
                     final isPositive = balance >= 0;
-                    final isCreditCard = data['isCreditCard'] ?? false;
+                    final isCreditCard =
+                      (data['isCreditCard'] ?? false) == true ||
+                      (data['type']?.toString() == 'credit_card');
                     final creditLimit = (data['creditLimit'] ?? 0.0).toDouble();
 
                     return Column(
@@ -779,9 +781,11 @@ class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                                     context,
                                   ).textTheme.titleSmall?.copyWith(
                                     color:
-                                        isPositive
-                                            ? AppTheme.successColor
-                                            : AppTheme.errorColor,
+                                        isCreditCard
+                                            ? AppTheme.errorColor
+                                            : (isPositive
+                                                ? AppTheme.successColor
+                                                : AppTheme.errorColor),
                                     fontWeight: FontWeight.w600,
                                   ),
                                 ),

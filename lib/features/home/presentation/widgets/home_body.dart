@@ -1,5 +1,8 @@
 // lib/features/home/presentation/widgets/home_body.dart
 import 'package:chanchi_app/core/config/theme.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:chanchi_app/features/home/presentation/screens/goal_screen.dart';
+import 'package:chanchi_app/core/utils/currency_util.dart';
 import 'package:chanchi_app/core/widgets/offline_indicator_widget.dart';
 import 'package:chanchi_app/features/home/presentation/providers/home_provider.dart';
 import 'package:chanchi_app/features/home/presentation/widgets/analytics_dashboard.dart';
