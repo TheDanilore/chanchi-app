@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:chanchi_app/core/utils/error_handler.dart';
+import 'package:chanchi_app/features/transactions/domain/services/transaction_service.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 
 // Crear una instancia global de FlutterLocalNotificationsPlugin
 final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
@@ -75,6 +77,18 @@ class AppInitializer {
               error,
             );
           });
+
+      // Ejecutar limpieza automática de la papelera (eliminar >30 días)
+      try {
+        final user = FirebaseAuth.instance.currentUser;
+        if (user != null) {
+          TransactionService().deleteOldTrash(user.uid);
+        } else {
+          print('No hay usuario autenticado; se omitirá limpieza automática de papelera');
+        }
+      } catch (e) {
+        print('Error al iniciar limpieza automática de papelera: $e');
+      }
 
       // Todo inicializado correctamente
       return true;

@@ -2021,6 +2021,61 @@ class TransactionService {
     }
   }
 
+  // Eliminar automáticamente las transacciones que llevan en la papelera más de `days` días
+  Future<void> deleteOldTrash(String userId, {int days = 30}) async {
+    try {
+      final isConnected = _connectivityService.isConnected;
+      if (!isConnected) {
+        print('No conectado: omitiendo limpieza automática de papelera');
+        return;
+      }
+
+      final cutoff = DateTime.now().subtract(Duration(days: days));
+      final cutoffTimestamp = Timestamp.fromDate(cutoff);
+
+      // Consultar transacciones en papelera con trashedAt <= cutoff
+      final oldTrashedQuery = await _firestore
+          .collection('transactions')
+          .where('userId', isEqualTo: userId)
+          .where('isInTrash', isEqualTo: true)
+          .where('trashedAt', isLessThanOrEqualTo: cutoffTimestamp)
+          .get();
+
+      if (oldTrashedQuery.docs.isEmpty) {
+        print('No hay transacciones antiguas en papelera para eliminar');
+        return;
+      }
+
+      print('Eliminando ${oldTrashedQuery.docs.length} transacciones antiguas de la papelera');
+
+      // Borrar en batches de 500
+      final batches = <WriteBatch>[];
+      WriteBatch batch = _firestore.batch();
+      int counter = 0;
+
+      for (final doc in oldTrashedQuery.docs) {
+        batch.delete(doc.reference);
+        counter++;
+
+        if (counter % 500 == 0) {
+          batches.add(batch);
+          batch = _firestore.batch();
+        }
+      }
+
+      // Añadir el último batch
+      batches.add(batch);
+
+      for (final b in batches) {
+        await b.commit();
+      }
+
+      print('Limpieza automática de papelera completada');
+    } catch (e) {
+      print('Error al eliminar transacciones antiguas de la papelera: $e');
+    }
+  }
+
   // Verificar si hay transacciones pendientes
   Future<bool> hasPendingOperations(String userId) async {
     try {
