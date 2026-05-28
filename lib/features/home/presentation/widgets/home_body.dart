@@ -483,15 +483,16 @@ class _HomeBodyState extends State<HomeBody> {
     return Padding(
       padding: const EdgeInsets.only(top: 10.0),
       child: StreamBuilder<QuerySnapshot>(
-        stream:
-            FirebaseFirestore.instance
-                .collection('users')
-                .doc(widget.userId)
-                .collection('goals')
-                .where('isActive', isEqualTo: true)
-                .orderBy('createdAt', descending: true)
-                .limit(1)
-                .snapshots(),
+        // Mostrar la meta más reciente independientemente de `isActive`.
+        // Evita que la UI siga mostrando "Crear meta" si la meta
+        // fue creada desde la consola sin el campo `isActive`.
+        stream: FirebaseFirestore.instance
+            .collection('users')
+            .doc(widget.userId)
+            .collection('goals')
+            .orderBy('createdAt', descending: true)
+            .limit(1)
+            .snapshots(),
         builder: (context, snapshot) {
           if (snapshot.connectionState == ConnectionState.waiting) {
             return const SizedBox.shrink();
