@@ -173,11 +173,6 @@ class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
             ),
             const SizedBox(height: 12),
 
-            // Goal widget (ahorro/meta)
-            _buildGoalWidget(),
-
-            const SizedBox(height: 12),
-
             // Total balance
             _buildTotalBalance(),
 

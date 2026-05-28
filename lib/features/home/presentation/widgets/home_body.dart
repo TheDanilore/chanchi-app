@@ -98,12 +98,13 @@ class _HomeBodyState extends State<HomeBody> {
       // Navegar a la pantalla de edición de transacción
       await Navigator.of(context).push(
         MaterialPageRoute(
-          builder: (_) => AddTransactionScreen(
-            userId: widget.userId,
-            transaction: transaction,
-            docId: docId,
-            isEditing: true,
-          ),
+          builder:
+              (_) => AddTransactionScreen(
+                userId: widget.userId,
+                transaction: transaction,
+                docId: docId,
+                isEditing: true,
+              ),
         ),
       );
 
@@ -177,7 +178,7 @@ class _HomeBodyState extends State<HomeBody> {
   Widget _buildGeneralTab() {
     // Obtener el provider
     final provider = Provider.of<HomeProvider>(context);
-    
+
     return RefreshIndicator(
       key: _refreshIndicatorKey,
       color: AppTheme.primaryColor,
@@ -232,6 +233,25 @@ class _HomeBodyState extends State<HomeBody> {
                 child: _buildFinancialSummarySection(provider),
               ),
 
+              if (_showFinancialSummary)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20.0),
+                  child: _buildGoalSection(),
+                ),
+
+              if (_showFinancialSummary)
+                Padding(
+                  padding: const EdgeInsets.only(
+                    top: 10.0,
+                    left: 20.0,
+                    right: 20.0,
+                  ),
+                  child: BudgetDashboardWidget(
+                    key: _budgetDashboardKey,
+                    userId: widget.userId,
+                  ),
+                ),
+
               // Cabecera de Movimientos
               Padding(
                 padding: const EdgeInsets.only(
@@ -247,7 +267,9 @@ class _HomeBodyState extends State<HomeBody> {
                       children: [
                         Text(
                           "Movimientos",
-                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          style: Theme.of(
+                            context,
+                          ).textTheme.titleMedium?.copyWith(
                             color: AppTheme.textPrimaryColor,
                             fontWeight: FontWeight.bold,
                           ),
@@ -316,7 +338,9 @@ class _HomeBodyState extends State<HomeBody> {
 
                 // Lista de transacciones - Container con altura fija
                 Container(
-                  height: MediaQuery.of(context).size.height * 0.5, // Altura fija para evitar problemas de layout
+                  height:
+                      MediaQuery.of(context).size.height *
+                      0.5, // Altura fija para evitar problemas de layout
                   child: TransactionList(
                     key: _transactionListKey,
                     userId: widget.userId,
@@ -343,7 +367,7 @@ class _HomeBodyState extends State<HomeBody> {
                   ),
                 ),
               ],
-              
+
               // Espacio adicional al final para evitar que el FAB tape contenido
               SizedBox(height: 80),
             ],
@@ -408,9 +432,9 @@ class _HomeBodyState extends State<HomeBody> {
           children: [
             Text(
               "Resumen Financiero",
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                fontWeight: FontWeight.bold
-              ),
+              style: Theme.of(
+                context,
+              ).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold),
             ),
             IconButton(
               icon: Icon(
@@ -434,9 +458,10 @@ class _HomeBodyState extends State<HomeBody> {
         // Widget de resumen financiero
         AnimatedCrossFade(
           duration: const Duration(milliseconds: 300),
-          crossFadeState: _showFinancialSummary
-              ? CrossFadeState.showFirst
-              : CrossFadeState.showSecond,
+          crossFadeState:
+              _showFinancialSummary
+                  ? CrossFadeState.showFirst
+                  : CrossFadeState.showSecond,
           firstChild: Padding(
             padding: const EdgeInsets.only(top: 2.0),
             child: FinancialSummaryDashboard(
@@ -450,17 +475,174 @@ class _HomeBodyState extends State<HomeBody> {
           ),
           secondChild: const SizedBox(height: 0),
         ),
-
-        // Widget de presupuestos
-        if (_showFinancialSummary)
-          Padding(
-            padding: const EdgeInsets.only(top: 10.0),
-            child: BudgetDashboardWidget(
-              key: _budgetDashboardKey,
-              userId: widget.userId,
-            ),
-          ),
       ],
+    );
+  }
+
+  Widget _buildGoalSection() {
+    return Padding(
+      padding: const EdgeInsets.only(top: 10.0),
+      child: StreamBuilder<QuerySnapshot>(
+        stream:
+            FirebaseFirestore.instance
+                .collection('users')
+                .doc(widget.userId)
+                .collection('goals')
+                .where('isActive', isEqualTo: true)
+                .orderBy('createdAt', descending: true)
+                .limit(1)
+                .snapshots(),
+        builder: (context, snapshot) {
+          if (snapshot.connectionState == ConnectionState.waiting) {
+            return const SizedBox.shrink();
+          }
+
+          final docs = snapshot.data?.docs ?? [];
+
+          if (docs.isEmpty) {
+            return GestureDetector(
+              onTap: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => GoalScreen(userId: widget.userId),
+                  ),
+                );
+              },
+              child: Container(
+                padding: const EdgeInsets.all(AppTheme.spacingM),
+                decoration: BoxDecoration(
+                  color: AppTheme.primaryColor.withOpacity(0.08),
+                  borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                  border: Border.all(
+                    color: AppTheme.primaryColor.withOpacity(0.25),
+                  ),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.flag, color: AppTheme.primaryColor),
+                    const SizedBox(width: AppTheme.spacingM),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            'Crear meta',
+                            style: Theme.of(
+                              context,
+                            ).textTheme.titleSmall?.copyWith(
+                              color: AppTheme.primaryColor,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            'Define una meta de ahorro',
+                            style: Theme.of(context).textTheme.bodySmall
+                                ?.copyWith(color: AppTheme.textSecondaryColor),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Icon(Icons.chevron_right, color: AppTheme.primaryColor),
+                  ],
+                ),
+              ),
+            );
+          }
+
+          final data = docs.first.data() as Map<String, dynamic>;
+          final title = data['title'] ?? 'Mi meta';
+          final target = (data['targetAmount'] ?? 0).toDouble();
+          final saved = (data['savedAmount'] ?? 0).toDouble();
+          final progress = target > 0 ? (saved / target).clamp(0.0, 1.0) : 0.0;
+
+          return GestureDetector(
+            onTap: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder:
+                      (_) => GoalScreen(
+                        userId: widget.userId,
+                        goalId: docs.first.id,
+                      ),
+                ),
+              );
+            },
+            child: Container(
+              padding: const EdgeInsets.all(AppTheme.spacingM),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(AppTheme.radiusM),
+                border: Border.all(color: Colors.grey.shade200),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withOpacity(0.03),
+                    blurRadius: 6,
+                    offset: const Offset(0, 2),
+                  ),
+                ],
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withOpacity(0.12),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Icon(Icons.flag, color: AppTheme.primaryColor),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              title,
+                              style: Theme.of(context).textTheme.titleSmall
+                                  ?.copyWith(fontWeight: FontWeight.bold),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Meta de ahorro',
+                              style: Theme.of(
+                                context,
+                              ).textTheme.bodySmall?.copyWith(
+                                color: AppTheme.textSecondaryColor,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        Icons.chevron_right,
+                        color: AppTheme.textSecondaryColor,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 10),
+                  LinearProgressIndicator(
+                    value: progress,
+                    minHeight: 5,
+                    backgroundColor: Colors.grey.shade200,
+                    color: AppTheme.primaryColor,
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${CurrencyUtil.format(amount: saved, currencyCode: 'PEN')} de ${CurrencyUtil.format(amount: target, currencyCode: 'PEN')}',
+                    style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                      color: AppTheme.textSecondaryColor,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
     );
   }
 }
