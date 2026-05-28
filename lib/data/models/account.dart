@@ -13,6 +13,7 @@ class Account {
   // Nuevas propiedades para tarjetas de crédito
   final bool isCreditCard;
   final double? creditLimit;
+  final int usageCount;
   final bool includeInTotalBalance; // Controla si se suma al balance total
   final DateTime? billingCycleEndDate; // Fecha de cierre del ciclo
 
@@ -27,6 +28,7 @@ class Account {
     this.currencyCode = 'PEN',
     this.isCreditCard = false,
     this.creditLimit,
+    this.usageCount = 0,
     this.includeInTotalBalance = true,
     this.billingCycleEndDate,
   });
@@ -77,6 +79,9 @@ class Account {
       currencyCode: map['currencyCode'] ?? 'PEN',
       isCreditCard: map['isCreditCard'] ?? type == 'credit_card',
       creditLimit: map['creditLimit']?.toDouble(),
+      usageCount: (map['usageCount'] ?? 0) is int
+          ? (map['usageCount'] ?? 0) as int
+          : (map['usageCount'] ?? 0).toInt(),
       includeInTotalBalance: map['includeInTotalBalance'] ?? true,
       billingCycleEndDate:
           map['billingCycleEndDate'] != null
@@ -97,6 +102,7 @@ class Account {
       'currencyCode': currencyCode,
       'isCreditCard': isCreditCard,
       'creditLimit': creditLimit,
+      'usageCount': usageCount,
       'includeInTotalBalance': includeInTotalBalance,
       'billingCycleEndDate':
           billingCycleEndDate != null
@@ -117,6 +123,7 @@ class Account {
     String? currencyCode,
     bool? isCreditCard,
     double? creditLimit,
+    int? usageCount,
     bool? includeInTotalBalance,
     DateTime? billingCycleEndDate,
   }) {
@@ -131,6 +138,7 @@ class Account {
       currencyCode: currencyCode ?? this.currencyCode,
       isCreditCard: isCreditCard ?? this.isCreditCard,
       creditLimit: creditLimit ?? this.creditLimit,
+      usageCount: usageCount ?? this.usageCount,
       includeInTotalBalance:
           includeInTotalBalance ?? this.includeInTotalBalance,
       billingCycleEndDate: billingCycleEndDate ?? this.billingCycleEndDate,

@@ -163,14 +163,13 @@ class TransactionService {
   // Método para cargar cuentas
   Future<List<Account>> loadAccounts(String userId) async {
     try {
-      final accountsSnapshot =
-          await _firestore
-              .collection('users')
-              .doc(userId)
-              .collection('accounts')
-              .get();
+      final accountsSnapshot = await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('accounts')
+          .get();
 
-      return accountsSnapshot.docs.map((doc) {
+      final accounts = accountsSnapshot.docs.map((doc) {
         final data = doc.data();
         return Account(
           id: doc.id,
@@ -180,11 +179,38 @@ class TransactionService {
           balance: (data['balance'] ?? 0.0).toDouble(),
           iconName: data['iconName'],
           color: data['color'],
+          usageCount: (data['usageCount'] ?? 0) is int
+              ? (data['usageCount'] ?? 0) as int
+              : (data['usageCount'] ?? 0).toInt(),
         );
       }).toList();
+
+      // Ordenar por uso más frecuente (usageCount desc), luego por nombre
+      accounts.sort((a, b) {
+        final cmp = b.usageCount.compareTo(a.usageCount);
+        if (cmp != 0) return cmp;
+        return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+      });
+
+      return accounts;
     } catch (e) {
       print('Error al cargar cuentas: $e');
       return [];
+    }
+  }
+
+  // Incrementar el contador de uso de una cuenta
+  Future<void> incrementAccountUsage(String userId, String accountId,
+      {int by = 1}) async {
+    try {
+      await _firestore
+          .collection('users')
+          .doc(userId)
+          .collection('accounts')
+          .doc(accountId)
+          .update({'usageCount': FieldValue.increment(by)});
+    } catch (e) {
+      print('Error incrementando usageCount: $e');
     }
   }
 
