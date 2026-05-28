@@ -3,6 +3,7 @@ import 'package:chanchi_app/features/home/presentation/widgets/animated_balance_
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chanchi_app/core/config/theme.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class FinancialSummaryDashboard extends StatefulWidget {
   final String userId;
@@ -24,6 +25,27 @@ class FinancialSummaryDashboard extends StatefulWidget {
 class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
   final _firestore = FirebaseFirestore.instance;
   bool _isBalanceHidden = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadHiddenPreference();
+  }
+
+  Future<void> _loadHiddenPreference() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = 'isBalanceHidden_${widget.userId}';
+      final value = prefs.getBool(key) ?? false;
+      if (mounted) {
+        setState(() {
+          _isBalanceHidden = value;
+        });
+      }
+    } catch (e) {
+      print('Error al cargar preferencia de ocultar saldo: $e');
+    }
+  }
 
   // Método de actualización
   Future<void> refresh() async {
@@ -124,6 +146,14 @@ class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                   onTap: () {
                     setState(() {
                       _isBalanceHidden = !_isBalanceHidden;
+                    });
+
+                    // Persistir preferencia por usuario
+                    SharedPreferences.getInstance().then((prefs) {
+                      final key = 'isBalanceHidden_${widget.userId}';
+                      prefs.setBool(key, _isBalanceHidden);
+                    }).catchError((e) {
+                      print('Error al guardar preferencia de ocultar saldo: $e');
                     });
                   },
                   borderRadius: BorderRadius.circular(12),

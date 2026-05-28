@@ -35,6 +35,7 @@ class AccountsList extends StatelessWidget {
             children:
                 accounts.map((account) {
                   final balance = (account['balance'] ?? 0.0).toDouble();
+                  final isCreditCard = account['isCreditCard'] ?? false;
                   final isPositive = balance >= 0;
                   return Column(
                     children: [
@@ -83,17 +84,18 @@ class AccountsList extends StatelessWidget {
                             isBalanceHidden
                                 ? "S/•••.••"
                                 : CurrencyUtil.format(
-                                  amount: balance,
-                                  currencyCode:
-                                      account['currencyCode'] ?? 'PEN',
-                                ),
+                                    amount: balance,
+                                    currencyCode:
+                                        account['currencyCode'] ?? 'PEN',
+                                  ),
                             style: Theme.of(
                               context,
                             ).textTheme.titleSmall?.copyWith(
-                              color:
-                                  isPositive
+                              color: isCreditCard
+                                  ? AppTheme.errorColor
+                                  : (isPositive
                                       ? AppTheme.successColor
-                                      : AppTheme.errorColor,
+                                      : AppTheme.errorColor),
                               fontWeight: FontWeight.w600,
                             ),
                           ),
