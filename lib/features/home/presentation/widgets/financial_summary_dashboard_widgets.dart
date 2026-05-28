@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:chanchi_app/features/home/presentation/screens/goal_screen.dart';
 
 class FinancialSummaryDashboard extends StatefulWidget {
   final String userId;
@@ -170,6 +171,11 @@ class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
                 ),
               ],
             ),
+            const SizedBox(height: 12),
+
+            // Goal widget (ahorro/meta)
+            _buildGoalWidget(),
+
             const SizedBox(height: 12),
 
             // Total balance
@@ -620,6 +626,35 @@ class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
 
         final accounts = snapshot.data?.docs ?? [];
 
+        // Ordenamiento local: priorizar cuentas con saldo (o tarjetas con uso),
+        // luego ordenar por balance absoluto (desc), luego por usageCount y nombre.
+        accounts.sort((a, b) {
+          final aData = a.data() as Map<String, dynamic>;
+          final bData = b.data() as Map<String, dynamic>;
+
+          final aBalance = (aData['balance'] ?? 0).toDouble();
+          final bBalance = (bData['balance'] ?? 0).toDouble();
+
+          final aHasMoney = aBalance.abs() > 0.0001;
+          final bHasMoney = bBalance.abs() > 0.0001;
+
+          if (aHasMoney && !bHasMoney) return -1;
+          if (!aHasMoney && bHasMoney) return 1;
+
+          if (aHasMoney && bHasMoney) {
+            final cmp = bBalance.abs().compareTo(aBalance.abs());
+            if (cmp != 0) return cmp;
+          }
+
+          final aUsage = (aData['usageCount'] ?? 0) as int;
+          final bUsage = (bData['usageCount'] ?? 0) as int;
+          if (bUsage != aUsage) return bUsage.compareTo(aUsage);
+
+          final aName = (aData['name'] ?? '') as String;
+          final bName = (bData['name'] ?? '') as String;
+          return aName.compareTo(bName);
+        });
+
         if (accounts.isEmpty) {
           return TextButton.icon(
             onPressed: () {
@@ -779,6 +814,91 @@ class FinancialSummaryDashboardState extends State<FinancialSummaryDashboard> {
               ),
             ),
           ],
+        );
+      },
+    );
+  }
+
+  Widget _buildGoalWidget() {
+    return StreamBuilder<QuerySnapshot>(
+      stream: _firestore
+          .collection('users')
+          .doc(widget.userId)
+          .collection('goals')
+          .where('isActive', isEqualTo: true)
+          .orderBy('createdAt', descending: true)
+          .limit(1)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return SizedBox.shrink();
+        }
+
+        final docs = snapshot.data?.docs ?? [];
+        if (docs.isEmpty) {
+          return TextButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(MaterialPageRoute(
+                builder: (_) => GoalScreen(userId: widget.userId),
+              ));
+            },
+            icon: Icon(Icons.flag, color: AppTheme.primaryColor),
+            label: Text('Crear meta', style: TextStyle(color: AppTheme.primaryColor)),
+            style: TextButton.styleFrom(
+              backgroundColor: AppTheme.primaryColor.withOpacity(0.06),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
+            ),
+          );
+        }
+
+        final data = docs.first.data() as Map<String, dynamic>;
+        final title = data['title'] ?? 'Mi meta';
+        final target = (data['targetAmount'] ?? 0).toDouble();
+        final saved = (data['savedAmount'] ?? 0).toDouble();
+        final progress = target > 0 ? (saved / target).clamp(0.0, 1.0) : 0.0;
+
+        return GestureDetector(
+          onTap: () {
+            Navigator.of(context).push(MaterialPageRoute(
+              builder: (_) => GoalScreen(userId: widget.userId, goalId: docs.first.id),
+            ));
+          },
+          child: Container(
+            padding: const EdgeInsets.symmetric(vertical: 10, horizontal: 12),
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(10),
+              border: Border.all(color: Colors.grey.shade100),
+            ),
+            child: Row(
+              children: [
+                Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withOpacity(0.12),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Icon(Icons.flag, color: AppTheme.primaryColor),
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.bold)),
+                      const SizedBox(height: 6),
+                      LinearProgressIndicator(value: progress, backgroundColor: Colors.grey.shade200, color: AppTheme.primaryColor),
+                      const SizedBox(height: 6),
+                      Text('${CurrencyUtil.format(amount: saved, currencyCode: 'PEN')} de ${CurrencyUtil.format(amount: target, currencyCode: 'PEN')}', style: Theme.of(context).textTheme.bodySmall?.copyWith(color: AppTheme.textSecondaryColor)),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Icon(Icons.chevron_right, color: AppTheme.textSecondaryColor),
+              ],
+            ),
+          ),
         );
       },
     );

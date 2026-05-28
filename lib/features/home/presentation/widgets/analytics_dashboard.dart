@@ -194,6 +194,7 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard> {
           ExpensesByCategoryCard(
             categorizedExpenses: _categorizedExpenses,
             totalExpenses: _totalExpenses,
+            userId: widget.userId,
           ),
           const SizedBox(height: AppTheme.spacingL),
           IncomeExpenseChart(
@@ -208,6 +209,7 @@ class _AnalyticsDashboardState extends State<AnalyticsDashboard> {
             monthlyIncome: _monthlyIncome,
             monthlyExpenses: _monthlyExpenses,
             categorizedExpenses: _categorizedExpenses,
+            userId: widget.userId,
           ),
         ],
       ),

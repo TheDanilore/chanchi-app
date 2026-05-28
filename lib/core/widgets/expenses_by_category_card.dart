@@ -2,15 +2,18 @@ import 'package:chanchi_app/core/widgets/donut_chart_painter.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
 import 'package:chanchi_app/core/config/theme.dart';
+import 'package:chanchi_app/features/transactions/presentation/screens/add_transaction_screen.dart';
 
 class ExpensesByCategoryCard extends StatefulWidget {
   final List<Map<String, dynamic>> categorizedExpenses;
   final double totalExpenses;
+  final String? userId;
 
   const ExpensesByCategoryCard({
     Key? key,
     required this.categorizedExpenses,
     required this.totalExpenses,
+    this.userId,
   }) : super(key: key);
 
   @override
@@ -128,7 +131,16 @@ class _ExpensesByCategoryCardState extends State<ExpensesByCategoryCard> {
             ),
             const SizedBox(height: 16),
             ElevatedButton.icon(
-              onPressed: () {},
+              onPressed: () {
+                if (widget.userId == null) return;
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => AddTransactionScreen(
+                      userId: widget.userId!,
+                    ),
+                  ),
+                );
+              },
               icon: Icon(Icons.add),
               label: Text("Añadir gasto"),
               style: ElevatedButton.styleFrom(

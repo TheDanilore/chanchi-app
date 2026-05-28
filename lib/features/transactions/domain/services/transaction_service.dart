@@ -171,24 +171,29 @@ class TransactionService {
 
       final accounts = accountsSnapshot.docs.map((doc) {
         final data = doc.data();
-        return Account(
-          id: doc.id,
-          name: data['name'] ?? '',
-          type: data['type'] ?? '',
-          institution: data['institution'] ?? '',
-          balance: (data['balance'] ?? 0.0).toDouble(),
-          iconName: data['iconName'],
-          color: data['color'],
-          usageCount: (data['usageCount'] ?? 0) is int
-              ? (data['usageCount'] ?? 0) as int
-              : (data['usageCount'] ?? 0).toInt(),
-        );
+        return Account.fromMap(data, doc.id);
       }).toList();
 
-      // Ordenar por uso más frecuente (usageCount desc), luego por nombre
+      // Ordenamiento: primero cuentas con dinero (balance != 0 o tarjeta con uso),
+      // ordenadas por valor absoluto del balance (desc). Si no tienen saldo,
+      // ordenar por usageCount (desc) y luego por nombre.
       accounts.sort((a, b) {
-        final cmp = b.usageCount.compareTo(a.usageCount);
-        if (cmp != 0) return cmp;
+        final aHasMoney = a.balance.abs() > 0.0001;
+        final bHasMoney = b.balance.abs() > 0.0001;
+
+        if (aHasMoney && !bHasMoney) return -1;
+        if (!aHasMoney && bHasMoney) return 1;
+
+        if (aHasMoney && bHasMoney) {
+          final aAbs = a.balance.abs();
+          final bAbs = b.balance.abs();
+          final cmp = bAbs.compareTo(aAbs);
+          if (cmp != 0) return cmp;
+        }
+
+        final cmpUsage = b.usageCount.compareTo(a.usageCount);
+        if (cmpUsage != 0) return cmpUsage;
+
         return a.name.toLowerCase().compareTo(b.name.toLowerCase());
       });
 

@@ -489,6 +489,13 @@ class _AddTransactionScreenState extends State<AddTransactionScreen> {
           // Nueva transacción o duplicado (siempre crear como nueva)
           await _transactionService.addTransaction(transaction);
 
+          // Incrementar usageCount de la cuenta usada
+          try {
+            await _transactionService.incrementAccountUsage(widget.userId, _selectedAccountId!);
+          } catch (e) {
+            print('No se pudo incrementar usageCount: $e');
+          }
+
           if (mounted) {
             Navigator.of(context).pushReplacement(
               MaterialPageRoute(builder: (_) => const HomeScreen()),

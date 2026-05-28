@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import 'package:chanchi_app/core/config/theme.dart';
 import 'package:chanchi_app/services/category_service.dart';
 import 'package:chanchi_app/data/models/category.dart';
+import 'package:chanchi_app/features/transactions/presentation/screens/add_transaction_screen.dart';
 
 class RecommendationsCard extends StatefulWidget {
   final Map<String, Map<String, double>> budgetProgress;
@@ -11,6 +12,7 @@ class RecommendationsCard extends StatefulWidget {
   final List<Map<String, dynamic>> categorizedExpenses;
   // Nuevo: indicador de salud financiera
   final double? financialHealthScore;
+  final String? userId;
 
   const RecommendationsCard({
     Key? key,
@@ -19,6 +21,7 @@ class RecommendationsCard extends StatefulWidget {
     required this.monthlyExpenses,
     required this.categorizedExpenses,
     this.financialHealthScore,
+    this.userId,
   }) : super(key: key);
 
   @override
@@ -671,7 +674,17 @@ class _RecommendationsCardState extends State<RecommendationsCard> {
     // Aquí implementarías navegación a pantallas específicas según la acción
     // Por ejemplo, navegar a configuración de presupuestos, añadir gasto, etc.
 
-    // Ejemplo de implementación básica: marcar como completada
+    // Manejar acción 'expense' => navegar a pantalla de agregar transacción
+    if (rec['actionType'] == 'expense' && widget.userId != null) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => AddTransactionScreen(userId: widget.userId!),
+        ),
+      );
+      return;
+    }
+
+    // Ejemplo de implementación básica por defecto: marcar como completada
     setState(() {
       _completedRecommendations.add(index);
     });
